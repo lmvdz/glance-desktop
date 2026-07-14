@@ -39,12 +39,13 @@ pnpm build         # vite — green @ bootstrap
 cd src-tauri && cargo check
 ```
 
-**cargo check is NOT green yet on this machine**: system libraries missing. Upstream CI installs `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev`; WSL2 additionally needs `libdbus-1-dev` (first observed failure: `libdbus-sys-0.2.7/build.rs:25:9: explicit panic` — dbus headers absent; GitHub runners have them preinstalled). One-time setup owed:
+**cargo gate status = GREEN** (2026-07-14, `Finished dev profile in 54s`). Two machine-specific facts to keep:
+
+- System deps: upstream CI's list (`libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev`) PLUS `libdbus-1-dev` (GitHub runners preinstall it; bare WSL2 doesn't — `libdbus-sys` panics without it). All installed 2026-07-14.
+- **linuxbrew shadows pkg-config**: `/home/linuxbrew/.linuxbrew/bin/pkg-config` precedes `/usr/bin` on PATH and its default search path is brew-only, so system libs look missing even when installed. Every cargo invocation on this machine needs:
 
 ```
-sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev libdbus-1-dev
+export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
 ```
 
-Re-run `cargo check` after installing and update this line: cargo gate status = **PENDING system deps**.
-
-GUI launch proof (`pnpm tauri dev` under WSLg) also owed after the deps land.
+**GUI launch proof: PASSED** (2026-07-14) — `pnpm tauri dev` under WSLg mapped a real X11 window: `0x600003 "Tauri App": ("terax" "Terax") 800x600` (captured via `xwininfo -root -tree`). Window class still says Terax — C02 rebrand-lite owns that.
