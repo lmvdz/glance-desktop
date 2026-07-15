@@ -22,6 +22,10 @@ export async function listCustomThemes(): Promise<Theme[]> {
 }
 
 export async function saveCustomTheme(theme: Theme): Promise<void> {
+  // `listCustomThemes` already awaits `ensureMigrated`, but that's an
+  // implementation detail of "how we compute `current`" — make the gate
+  // explicit here too so this write can never be reordered ahead of it.
+  await ensureMigrated();
   const current = await listCustomThemes();
   const next = current.filter((t) => t.id !== theme.id).concat(theme);
   await store.set(KEY, next);
@@ -30,6 +34,7 @@ export async function saveCustomTheme(theme: Theme): Promise<void> {
 }
 
 export async function deleteCustomTheme(id: string): Promise<void> {
+  await ensureMigrated();
   const current = await listCustomThemes();
   const next = current.filter((t) => t.id !== id);
   if (next.length === current.length) return;

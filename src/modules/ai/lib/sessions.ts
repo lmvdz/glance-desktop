@@ -48,10 +48,12 @@ export async function loadMessages(id: string): Promise<UIMessage[] | null> {
 }
 
 export async function saveSessionsList(sessions: SessionMeta[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_SESSIONS, sessions);
 }
 
 export async function saveActiveId(id: string | null): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_ACTIVE, id);
 }
 
@@ -59,10 +61,12 @@ export async function saveMessages(
   id: string,
   messages: UIMessage[],
 ): Promise<void> {
+  await ensureMigrated();
   await store.set(messagesKey(id), messages);
 }
 
 export async function deleteSessionData(id: string): Promise<void> {
+  await ensureMigrated();
   await store.delete(messagesKey(id));
 }
 

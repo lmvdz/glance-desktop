@@ -363,6 +363,11 @@ function ensureMigrated(): Promise<void> {
 const PREFS_CHANGED_EVENT = "glance://prefs-changed";
 
 async function writePref<T>(key: string, value: T): Promise<void> {
+  // Every setter in this module funnels through here — gating the shared
+  // migration promise at this single choke point means no setter can write
+  // into the new store before `loadPreferences`'s migrate (or this same
+  // gate, whichever runs first) has actually finished copying legacy data.
+  await ensureMigrated();
   await store.set(key, value);
   await store.save();
   await emit(PREFS_CHANGED_EVENT, { key, value });
@@ -557,6 +562,11 @@ export async function setLspActivation(
   id: string,
   value: LspActivation | null,
 ): Promise<void> {
+  // Reads the store directly (below), ahead of `writePref`'s own gate — so
+  // this needs its own await too, or it could read a not-yet-migrated
+  // store and silently drop whatever legacy activation state migration
+  // would have copied in.
+  await ensureMigrated();
   const current =
     ((await store.get(KEY_LSP_ACTIVATION)) as Record<string, LspActivation>) ??
     {};

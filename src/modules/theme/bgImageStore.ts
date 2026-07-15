@@ -1,3 +1,5 @@
+import { createMigrationGate } from "@/modules/migrations/migrationGate";
+
 const DB_NAME = "glance-bg-images";
 /** Pre-rename database name — migrated in on first access, see `ensureMigrated`. */
 const OLD_DB_NAME = "terax-bg-images";
@@ -78,52 +80,55 @@ function writeEntries(
 }
 
 /**
- * One-time, best-effort copy of every background image from the pre-rename
+ * One-time copy of every background image from the pre-rename
  * `terax-bg-images` database into `glance-bg-images`, only when the new
- * database is still empty. `indexedDB.databases()` (where supported) avoids
- * ever opening — and thereby creating — the legacy database on a fresh
- * install; where it's unsupported we fall back to opening it directly (an
- * empty database left behind on a truly-fresh install is harmless).
- * The pure "should we copy, and what" decision reuses
- * `planLazyStoreMigration` — a whole-object-store swap is the same shape as
- * a whole-Tauri-store-file swap: copy every old entry only when the new
- * side is still empty.
+ * database is still empty. The pure "should we copy, and what" decision
+ * reuses `planLazyStoreMigration` — a whole-object-store swap is the same
+ * shape as a whole-Tauri-store-file swap: copy every old entry only when
+ * the new side is still empty.
+ *
+ * `indexedDB.databases()` (where supported) is the ONLY way to check
+ * whether the legacy database exists without opening — and thereby
+ * creating — it: `indexedDB.open(name, …)` unconditionally creates a
+ * database that doesn't exist yet. Where `databases()` is unsupported
+ * (older WebViews), we skip legacy migration entirely rather than open the
+ * legacy name blind — that used to leave a fresh install with a spurious,
+ * permanently-created empty `terax-bg-images` database every time. The
+ * cost is that any real legacy images on such a WebView won't be
+ * auto-copied; that's an acceptable trade for never fabricating the
+ * database this fix exists to avoid creating.
+ *
+ * Memoized as an in-flight PROMISE (via `createMigrationGate`), not a
+ * "done" boolean: every entrypoint (`putBgImage`/`getBgImage`/
+ * `deleteBgImage`) awaits the same gate, and a FAILED attempt clears the
+ * memo so the next call in this session retries instead of the old images
+ * staying stranded for the rest of the session.
  */
-let migrationPromise: Promise<void> | null = null;
-
-async function ensureMigrated(): Promise<void> {
-  if (!migrationPromise) migrationPromise = runMigration();
-  return migrationPromise;
-}
+const ensureMigrated = createMigrationGate(runMigration);
 
 async function runMigration(): Promise<void> {
+  if (typeof indexedDB.databases !== "function") return;
+  const dbs = await indexedDB.databases();
+  if (!dbs.some((d) => d.name === OLD_DB_NAME)) return; // nothing to migrate — never open/create it
+  const db = await openDb();
+  const newEntries = await listEntries(db);
+  if (newEntries.length > 0) return; // new store already has data
+  const oldDb = await openNamedDb(OLD_DB_NAME);
   try {
-    if (typeof indexedDB.databases === "function") {
-      const dbs = await indexedDB.databases();
-      if (!dbs.some((d) => d.name === OLD_DB_NAME)) return;
-    }
-    const db = await openDb();
-    const newEntries = await listEntries(db);
-    if (newEntries.length > 0) return; // new store already has data
-    const oldDb = await openNamedDb(OLD_DB_NAME);
+    const oldEntries = await listEntries(oldDb);
+    const { planLazyStoreMigration } = await import(
+      "@/modules/migrations/lazyStoreMigration"
+    );
+    const plan = planLazyStoreMigration(newEntries, oldEntries);
+    if (!plan.shouldMigrate) return;
+    await writeEntries(db, plan.entriesToWrite);
     try {
-      const oldEntries = await listEntries(oldDb);
-      const { planLazyStoreMigration } = await import(
-        "@/modules/migrations/lazyStoreMigration"
-      );
-      const plan = planLazyStoreMigration(newEntries, oldEntries);
-      if (!plan.shouldMigrate) return;
-      await writeEntries(db, plan.entriesToWrite);
-      try {
-        await clearStore(oldDb);
-      } catch {
-        /* not fatal — new store already has the data */
-      }
-    } finally {
-      oldDb.close();
+      await clearStore(oldDb);
+    } catch {
+      /* not fatal — new store already has the data */
     }
-  } catch {
-    /* migration is best-effort; never block a background-image read/write */
+  } finally {
+    oldDb.close();
   }
 }
 

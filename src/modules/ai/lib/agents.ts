@@ -111,11 +111,13 @@ export async function loadAgents(): Promise<LoadedAgents> {
 }
 
 export async function saveCustomAgents(custom: Agent[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_CUSTOM, custom);
   await store.save();
 }
 
 export async function saveActiveAgentId(id: string): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_ACTIVE, id);
   await store.save();
 }

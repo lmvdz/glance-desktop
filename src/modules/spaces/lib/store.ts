@@ -56,18 +56,22 @@ export async function loadAll(): Promise<LoadedSpaces> {
 }
 
 export async function saveSpacesList(spaces: SpaceMeta[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_SPACES, spaces);
 }
 
 export async function saveActiveId(id: string | null): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_ACTIVE, id);
 }
 
 export async function saveState(id: string, state: SpaceState): Promise<void> {
+  await ensureMigrated();
   await store.set(stateKey(id), state);
 }
 
 export async function deleteSpaceData(id: string): Promise<void> {
+  await ensureMigrated();
   await store.delete(stateKey(id));
 }
 

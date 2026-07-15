@@ -30,10 +30,12 @@ export async function saveTodos(
   sessionId: string,
   todos: Todo[],
 ): Promise<void> {
+  await ensureMigrated();
   await store.set(todosKey(sessionId), todos);
 }
 
 export async function deleteTodos(sessionId: string): Promise<void> {
+  await ensureMigrated();
   await store.delete(todosKey(sessionId));
 }
 

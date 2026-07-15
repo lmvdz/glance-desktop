@@ -27,6 +27,7 @@ export async function loadSnippets(): Promise<Snippet[]> {
 }
 
 export async function saveSnippets(list: Snippet[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_LIST, list);
   await store.save();
 }
