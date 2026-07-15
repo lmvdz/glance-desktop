@@ -42,10 +42,13 @@ let legacyMigrationAttempted = false;
 
 async function migrateLegacyTokenInto(id: string): Promise<string | null> {
   if (legacyMigrationAttempted) return null;
-  legacyMigrationAttempted = true;
 
+  // Only the ACTIVE daemon adopts the legacy unscoped token. Crucially, don't consume the
+  // one-shot flag for a non-active daemon's lookup — otherwise a probe of a second daemon that
+  // happened to run first would burn the attempt and orphan the active daemon's saved token.
   const activeId = await getActiveDaemonId();
   if (activeId !== id) return null;
+  legacyMigrationAttempted = true;
 
   const legacy = await getLegacyToken();
   if (!legacy) return null;

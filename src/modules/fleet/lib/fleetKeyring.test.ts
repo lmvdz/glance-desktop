@@ -101,6 +101,34 @@ describe("fleetKeyring — per-daemon tokens + legacy migration", () => {
     expect(store.get("fleet-daemon-token")).toBe("legacy-token");
   });
 
+  it("a NON-active lookup first does not burn the one-shot — the active daemon still adopts the legacy token", async () => {
+    const { getDaemonToken } = await freshKeyring();
+    const store = new Map<string, string>();
+    store.set("fleet-daemon-token", "legacy-token");
+    invokeMock.mockImplementation(
+      async (cmd: string, args: { account: string; password?: string }) => {
+        if (cmd === "secrets_get") return store.get(args.account) ?? null;
+        if (cmd === "secrets_set") {
+          store.set(args.account, args.password as string);
+          return undefined;
+        }
+        if (cmd === "secrets_delete") {
+          store.delete(args.account);
+          return undefined;
+        }
+        throw new Error(`unexpected invoke ${cmd}`);
+      },
+    );
+    // A second daemon's probe happens to run FIRST (it isn't active) — must not consume the attempt.
+    getActiveDaemonIdMock.mockResolvedValue("active-id");
+    expect(await getDaemonToken("other-id")).toBeNull();
+    expect(store.get("fleet-daemon-token")).toBe("legacy-token"); // still there
+    // Now the active daemon's probe adopts it.
+    expect(await getDaemonToken("active-id")).toBe("legacy-token");
+    expect(store.get("fleet-daemon-token:active-id")).toBe("legacy-token");
+    expect(store.has("fleet-daemon-token")).toBe(false);
+  });
+
   it("getFleetToken/setFleetToken/clearFleetToken route through the active daemon's id", async () => {
     const { getFleetToken, setFleetToken, clearFleetToken } =
       await freshKeyring();
