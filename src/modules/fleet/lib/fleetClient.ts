@@ -165,6 +165,28 @@ export class FleetClient {
     ).catch(() => {});
   }
 
+  /** Create a lightweight "console" chat unit — POST /api/console {repo, model?, profileId?} → { agentId }.
+   *  The daemon-backed chat (E01) lazily creates one on the first turn; the agentId is remembered so
+   *  every turn steers the SAME unit (and so E02 can promote it in place). Returns null on failure. */
+  async createConsole(
+    repo: string,
+    model?: string,
+    profileId?: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const res = await fetch(`${this.config.baseUrl}/api/console`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ repo, model, profileId }),
+      signal,
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as {
+      agentId?: string;
+    } | null;
+    return body?.agentId ?? null;
+  }
+
   /**
    * Steer a unit — POST /api/command {type:"prompt"}, the same shape the webapp sends. This is
    * an operator-tier WRITE (it spends model tokens and drives the agent), so it needs a token
