@@ -96,6 +96,44 @@ export class FleetClient {
     return res.json();
   }
 
+  /** Presence rows — GET /api/presence[?repo] → PresenceEntry[]. Ad-hoc CLI sessions reported by B03
+   *  harness-hooks appear here as `source:"other"` with an `agent` label `harness:sessionId`; the
+   *  adopt surface (E03) reads these to find sessions it can pull into the fleet. */
+  async presence(repo?: string, signal?: AbortSignal): Promise<unknown> {
+    const q = repo ? `?repo=${encodeURIComponent(repo)}` : "";
+    const res = await this.get(`/api/presence${q}`, signal);
+    if (!res.ok) throw new Error(`presence fetch failed: ${res.status}`);
+    return res.json();
+  }
+
+  /** Adopt an ad-hoc CLI session into a fleet unit (E03) — POST /api/agents/adopt {harness, sessionId,
+   *  cwd}. The daemon captures the session's uncommitted work into a fresh worktree, leaves the
+   *  developer's checkout untouched, and returns the new unit. `{ok, reason?, agent?}`. */
+  async adopt(
+    harness: string,
+    sessionId: string,
+    cwd: string,
+    signal?: AbortSignal,
+  ): Promise<{
+    ok: boolean;
+    reason?: string;
+    agent?: { id: string; name: string; worktree?: string };
+  }> {
+    const res = await fetch(`${this.config.baseUrl}/api/agents/adopt`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ harness, sessionId, cwd }),
+      signal,
+    });
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      reason?: string;
+      agent?: { id: string; name: string; worktree?: string };
+    } | null;
+    if (!body) return { ok: false, reason: `adopt failed (${res.status})` };
+    return { ok: body.ok === true, reason: body.reason, agent: body.agent };
+  }
+
   /** Interrupt a unit's current turn — POST /api/command {type:"interrupt"} → ACP session/cancel.
    *  Used by "Take over" (I05) to quiesce the agent so the human drives. */
   async interrupt(
