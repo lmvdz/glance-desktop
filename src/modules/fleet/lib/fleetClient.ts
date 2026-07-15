@@ -68,6 +68,18 @@ export class FleetClient {
     return res.json();
   }
 
+  /** File leases for a repo — GET /api/leases?repo → LeaseEntry[] (who holds which file). The
+   *  overlay (I04) reads these; repo-level GET /api/presence lands with I05 when the human's own
+   *  presence write matters. */
+  async leases(repo: string, signal?: AbortSignal): Promise<unknown> {
+    const res = await this.get(
+      `/api/leases?repo=${encodeURIComponent(repo)}`,
+      signal,
+    );
+    if (!res.ok) throw new Error(`leases fetch failed: ${res.status}`);
+    return res.json();
+  }
+
   /**
    * Steer a unit — POST /api/command {type:"prompt"}, the same shape the webapp sends. This is
    * an operator-tier WRITE (it spends model tokens and drives the agent), so it needs a token
