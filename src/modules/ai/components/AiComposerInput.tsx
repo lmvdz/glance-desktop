@@ -11,6 +11,7 @@ import { useSnippetsStore } from "../store/snippetsStore";
 import { AgentSwitcher } from "./AgentSwitcher";
 import { DaemonModeToggle } from "./DaemonModeToggle";
 import { FilePickerContent } from "./FilePicker";
+import { PromoteToUnitButton } from "./PromoteToUnitButton";
 import { SnippetPickerContent, type PickerItem } from "./SnippetPicker";
 
 type SnippetTrigger = {
@@ -266,6 +267,7 @@ export function AiComposerInput() {
               )}
             />
             <DaemonModeToggle />
+            <PromoteToUnitButton />
             <AgentSwitcher />
           </div>
         </PopoverAnchor>

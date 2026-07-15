@@ -131,6 +131,40 @@ export class FleetClient {
     return res.ok ? { ok: true } : { ok: false, detail: `${res.status}` };
   }
 
+  /** Promote a daemon-backed chat (a console unit) into a working, landable unit IN PLACE (E02) —
+   *  POST /api/agents/:id/promote {task?, mode?}. The daemon clears the console restriction, keeps the
+   *  worktree + transcript, and steers the task into the same session. Returns {ok, reason?, agent?}. */
+  async promote(
+    id: string,
+    opts: { task?: string; mode?: string },
+    signal?: AbortSignal,
+  ): Promise<{
+    ok: boolean;
+    reason?: string;
+    agent?: { id: string; name: string; worktree?: string };
+  }> {
+    const res = await fetch(
+      `${this.config.baseUrl}/api/agents/${encodeURIComponent(id)}/promote`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(opts),
+        signal,
+      },
+    );
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      reason?: string;
+      agent?: { id: string; name: string; worktree?: string };
+    } | null;
+    if (!body) return { ok: false, reason: `promote failed (${res.status})` };
+    return {
+      ok: body.ok === true,
+      reason: body.reason,
+      agent: body.agent,
+    };
+  }
+
   /** Claim presence for a worktree (I02's write) — POST /api/presence → { id }. Used by "Take over"
    *  to register the human as present. Returns the claim id to release on hand-back. */
   async claimPresence(
