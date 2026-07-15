@@ -1,4 +1,5 @@
 import type { UIMessage } from "@ai-sdk/react";
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type SessionMeta = {
@@ -8,12 +9,18 @@ export type SessionMeta = {
   updatedAt: number;
 };
 
-const STORE_PATH = "terax-ai-sessions.json";
+const STORE_PATH = "glance-ai-sessions.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-ai-sessions.json";
 const KEY_SESSIONS = "sessions";
 const KEY_ACTIVE = "activeId";
 const messagesKey = (id: string) => `messages:${id}`;
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
+
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
 
 export type LoadedSessions = {
   sessions: SessionMeta[];
@@ -21,6 +28,7 @@ export type LoadedSessions = {
 };
 
 export async function loadAll(): Promise<LoadedSessions> {
+  await ensureMigrated();
   // One IPC roundtrip via entries() rather than two parallel get()s. Per-
   // session messages are loaded lazily via `loadMessages` only when a
   // session is opened, so cold boot stays at a single store call.
@@ -35,6 +43,7 @@ export async function loadAll(): Promise<LoadedSessions> {
 }
 
 export async function loadMessages(id: string): Promise<UIMessage[] | null> {
+  await ensureMigrated();
   return (await store.get<UIMessage[]>(messagesKey(id))) ?? null;
 }
 

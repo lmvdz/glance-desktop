@@ -1,3 +1,4 @@
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type Snippet = {
@@ -9,12 +10,19 @@ export type Snippet = {
   content: string;
 };
 
-const STORE_PATH = "terax-ai-snippets.json";
+const STORE_PATH = "glance-ai-snippets.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-ai-snippets.json";
 const KEY_LIST = "snippets";
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
+
 export async function loadSnippets(): Promise<Snippet[]> {
+  await ensureMigrated();
   return (await store.get<Snippet[]>(KEY_LIST)) ?? [];
 }
 

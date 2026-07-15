@@ -14,13 +14,20 @@ import {
   type SttProvider,
   WHISPERCPP_DEFAULT_BASE_URL,
 } from "@/modules/ai/config";
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import type { KeyBinding, ShortcutId } from "@/modules/shortcuts/shortcuts";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type ThemePref = "system" | "light" | "dark";
 
-export const DEFAULT_THEME_ID = "terax-default";
+// Persisted default-theme id from before the rename. Kept as the literal
+// stored value for back-compat: users who saved this as their theme choice
+// (it was also the literal default before any explicit choice) must keep
+// resolving to the built-in default theme after the rename — see
+// `src/modules/theme/themes/index.ts` and `getDefaultTheme()`.
+export const LEGACY_DEFAULT_THEME_ID = "terax-default";
+export const DEFAULT_THEME_ID = "glance-default";
 
 export type BackgroundKind = "none" | "image";
 
@@ -197,7 +204,9 @@ export type LspCustomServer = {
   rootMarkers: string[];
 };
 
-const STORE_PATH = "terax-settings.json";
+const STORE_PATH = "glance-settings.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-settings.json";
 const KEY_THEME = "theme";
 const KEY_THEME_ID = "themeId";
 const KEY_BG_KIND = "backgroundKind";
@@ -343,11 +352,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
+
 // LazyStore.onChange only fires within the writing process. The settings
 // page lives in a separate webview, so writes there never reach the main
 // window's subscribers. Mirror every setter through a Tauri event so any
 // window can listen.
-const PREFS_CHANGED_EVENT = "terax://prefs-changed";
+const PREFS_CHANGED_EVENT = "glance://prefs-changed";
 
 async function writePref<T>(key: string, value: T): Promise<void> {
   await store.set(key, value);
@@ -355,7 +368,18 @@ async function writePref<T>(key: string, value: T): Promise<void> {
   await emit(PREFS_CHANGED_EVENT, { key, value });
 }
 
+/** Resolve a persisted `themeId`, remapping the pre-rename literal default
+ *  (`"terax-default"`, the only value users could have saved before this
+ *  concern shipped) to the new default id so old preferences keep pointing
+ *  at the built-in default theme instead of resolving to nothing. */
+export function resolveThemeId(stored: string | undefined): string {
+  if (stored === undefined) return DEFAULT_PREFERENCES.themeId;
+  if (stored === LEGACY_DEFAULT_THEME_ID) return DEFAULT_THEME_ID;
+  return stored;
+}
+
 export async function loadPreferences(): Promise<Preferences> {
+  await ensureMigrated();
   // Single IPC roundtrip — fetching keys individually fans out to one
   // `plugin:store|get` per setting and is the dominant boot cost.
   const entries = await store.entries();
@@ -363,7 +387,7 @@ export async function loadPreferences(): Promise<Preferences> {
   const get = <T>(k: string): T | undefined => map.get(k) as T | undefined;
   return {
     theme: get<ThemePref>(KEY_THEME) ?? DEFAULT_PREFERENCES.theme,
-    themeId: get<string>(KEY_THEME_ID) ?? DEFAULT_PREFERENCES.themeId,
+    themeId: resolveThemeId(get<string>(KEY_THEME_ID)),
     backgroundKind:
       get<BackgroundKind>(KEY_BG_KIND) ?? DEFAULT_PREFERENCES.backgroundKind,
     backgroundImageId:
@@ -936,7 +960,7 @@ export async function onPreferencesChange(
 
 // API key changes are stored in OS keychain (not the prefs store),
 // so we broadcast via a Tauri event for cross-window listeners.
-const KEYS_CHANGED_EVENT = "terax://ai-keys-changed";
+const KEYS_CHANGED_EVENT = "glance://ai-keys-changed";
 
 export async function emitKeysChanged(): Promise<void> {
   await emit(KEYS_CHANGED_EVENT);

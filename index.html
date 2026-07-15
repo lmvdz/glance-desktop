@@ -4,11 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terax</title>
+    <title>Glance</title>
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("terax-ui-theme-shadow");
+          // Pre-rename key fallback: an upgrading user's fast-path shadow
+          // hasn't been migrated to the new key yet the very first time this
+          // inline script runs (before ThemeProvider mounts and migrates it).
+          var t =
+            localStorage.getItem("glance-ui-theme-shadow") ||
+            localStorage.getItem("terax-ui-theme-shadow");
           var resolved =
             t === "light" || t === "dark"
               ? t

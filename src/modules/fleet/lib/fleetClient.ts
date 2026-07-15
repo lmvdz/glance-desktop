@@ -1,6 +1,6 @@
 // Typed client for a glance daemon's REST surface. C04 is the SKELETON: connection +
 // auth + health only; the roster/attention reads land in C05. Plain `fetch` to a
-// loopback daemon — terax's CSP `connect-src` already allows http://127.0.0.1:* and
+// loopback daemon — glance's CSP `connect-src` already allows http://127.0.0.1:* and
 // http://localhost:* (verified during the fork bootstrap), so no Rust proxy is needed
 // for same-host daemons. A remote/https daemon is a later concern (Epic M).
 

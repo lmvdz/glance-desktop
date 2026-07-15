@@ -61,9 +61,19 @@ const AGENTS: &[AgentSpec] = &[
 
 // Substrings identifying a hook command as ours, across every form we've ever
 // emitted (legacy /dev/tty Claude, current TerminalSequence, Osc, Windows
-// helper). Used to prune our own groups before reinserting so installs are
-// idempotent and migrate older markers.
-const OWNED_MARKERS: [&str; 3] = ["notify;Terax;", "terax;notify", "__terax_notify"];
+// helper, AND the pre-rename "Terax" forms). Used to prune our own groups
+// before reinserting so installs are idempotent and migrate older markers —
+// including a hook installed by a build of this app before this rename, so
+// re-enabling replaces it instead of leaving a stale group installed
+// alongside the new one.
+const OWNED_MARKERS: [&str; 6] = [
+    "notify;Glance;",
+    "glance;notify",
+    "__glance_notify",
+    "notify;Terax;",
+    "terax;notify",
+    "__terax_notify",
+];
 
 fn find(agent: &str) -> Result<&'static AgentSpec, String> {
     AGENTS
@@ -74,8 +84,12 @@ fn find(agent: &str) -> Result<&'static AgentSpec, String> {
 
 fn hook_command(spec: &AgentSpec, event: &str) -> String {
     match spec.delivery {
+        // `$GLANCE_TERMINAL` is set on every shell this app spawns; the older
+        // `$TERAX_TERMINAL` is ALSO still set (see pty/shell_init.rs) so a
+        // hook that isn't re-enabled after upgrading keeps working — but any
+        // freshly (re-)written hook checks the current var.
         Delivery::TerminalSequence => format!(
-            r#"[ -n "$TERAX_TERMINAL" ] && printf '{{"terminalSequence":"\\u001b]777;notify;Terax;{event}\\u0007"}}' || true"#
+            r#"[ -n "$GLANCE_TERMINAL" ] && printf '{{"terminalSequence":"\\u001b]777;notify;Glance;{event}\\u0007"}}' || true"#
         ),
         Delivery::Osc => osc_command(spec.agent, event),
     }
@@ -85,7 +99,7 @@ fn hook_command(spec: &AgentSpec, event: &str) -> String {
 #[cfg(unix)]
 fn osc_command(agent: &str, event: &str) -> String {
     format!(
-        r#"[ -n "$TERAX_TERMINAL" ] && printf '\033]777;notify;Terax;{agent};{event}\007' > /dev/tty; printf '{{}}'"#
+        r#"[ -n "$GLANCE_TERMINAL" ] && printf '\033]777;notify;Glance;{agent};{event}\007' > /dev/tty; printf '{{}}'"#
     )
 }
 
@@ -93,23 +107,23 @@ fn osc_command(agent: &str, event: &str) -> String {
 fn osc_command(agent: &str, event: &str) -> String {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "terax.exe".to_string());
-    format!(r#""{exe}" __terax_notify {agent} {event}"#)
+        .unwrap_or_else(|_| "glance.exe".to_string());
+    format!(r#""{exe}" __glance_notify {agent} {event}"#)
 }
 
 // The stable substring that proves a given (agent, event) hook is installed.
 // Kept in sync with hook_command so status reflects what enable writes.
 fn status_needle(spec: &AgentSpec, event: &str) -> String {
     match spec.delivery {
-        Delivery::TerminalSequence => format!("notify;Terax;{event}"),
+        Delivery::TerminalSequence => format!("notify;Glance;{event}"),
         Delivery::Osc => {
             #[cfg(unix)]
             {
-                format!("notify;Terax;{};{event}", spec.agent)
+                format!("notify;Glance;{};{event}", spec.agent)
             }
             #[cfg(windows)]
             {
-                format!("__terax_notify {} {event}", spec.agent)
+                format!("__glance_notify {} {event}", spec.agent)
             }
         }
     }
@@ -200,7 +214,7 @@ pub fn agent_enable_hooks(agent: String) -> Result<(), String> {
 
     // Write to a sibling temp file then rename so a crash mid-write can't leave
     // a truncated config.
-    let tmp = path.with_extension("terax-tmp");
+    let tmp = path.with_extension("glance-tmp");
     std::fs::write(&tmp, out).map_err(|e| format!("write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
@@ -213,18 +227,18 @@ pub fn agent_enable_hooks(agent: String) -> Result<(), String> {
 // CONOUT$ path can't drift from what the Unix /dev/tty hook emits.
 #[cfg(any(windows, test))]
 fn conout_marker(agent: &str, event: &str) -> String {
-    format!("\x1b]777;notify;Terax;{agent};{event}\x07")
+    format!("\x1b]777;notify;Glance;{agent};{event}\x07")
 }
 
-// Windows has no /dev/tty: the hook calls `terax.exe __terax_notify ...` and we
-// write the marker into the ConPTY console. GUI-subsystem release inherits no
-// console, so attach to the hook runner's first.
+// Windows has no /dev/tty: the hook calls `glance.exe __glance_notify ...` and
+// we write the marker into the ConPTY console. GUI-subsystem release inherits
+// no console, so attach to the hook runner's first.
 #[cfg(windows)]
 pub fn emit_conout_marker(agent: &str, event: &str) {
     use std::io::Write;
     use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
 
-    if std::env::var_os("TERAX_TERMINAL").is_none() {
+    if std::env::var_os("GLANCE_TERMINAL").is_none() {
         return;
     }
     unsafe {
@@ -280,9 +294,9 @@ mod tests {
         assert_eq!(hook_count(&out, "UserPromptSubmit"), 1);
         assert_eq!(hook_count(&out, "Notification"), 1);
         assert_eq!(hook_count(&out, "Stop"), 1);
-        assert!(command(&out, "Notification", 0).contains("notify;Terax;attention"));
-        assert!(command(&out, "Stop", 0).contains("notify;Terax;finished"));
-        assert!(command(&out, "UserPromptSubmit", 0).contains("notify;Terax;working"));
+        assert!(command(&out, "Notification", 0).contains("notify;Glance;attention"));
+        assert!(command(&out, "Stop", 0).contains("notify;Glance;finished"));
+        assert!(command(&out, "UserPromptSubmit", 0).contains("notify;Glance;working"));
         assert!(command(&out, "Stop", 0).contains("terminalSequence"));
         assert!(!command(&out, "Stop", 0).contains("/dev/tty"));
     }
@@ -298,11 +312,39 @@ mod tests {
     }
 
     #[test]
+    fn replaces_a_pre_rename_terax_branded_hook_with_glance() {
+        // A hook installed by a build of this app before the Terax→Glance
+        // rename (exactly what pre-rename `hook_command` emitted for Claude's
+        // Notification/attention event) must be REPLACED — not duplicated —
+        // the next time hooks are (re-)enabled, and the freshly-written
+        // command uses the new marker.
+        let old = json!({
+            "hooks": {
+                "Notification": [
+                    { "hooks": [ { "type": "command",
+                        "command": "[ -n \"$TERAX_TERMINAL\" ] && printf '{\"terminalSequence\":\"\\u001b]777;notify;Terax;attention\\u0007\"}' || true"
+                    } ] }
+                ]
+            }
+        });
+        assert!(command(&old, "Notification", 0).contains("notify;Terax;attention"));
+
+        let migrated = merge_hooks(old, spec("claude"));
+        assert_eq!(
+            hook_count(&migrated, "Notification"),
+            1,
+            "old Terax-branded group must be replaced, not left alongside a new one"
+        );
+        assert!(command(&migrated, "Notification", 0).contains("notify;Glance;attention"));
+        assert!(!command(&migrated, "Notification", 0).contains("Terax"));
+    }
+
+    #[test]
     fn conout_marker_matches_detector_format() {
         // Exactly the bytes pty/agent_detect parses (ESC ] 777 ; ... BEL).
         assert_eq!(
             conout_marker("gemini", "attention"),
-            "\u{1b}]777;notify;Terax;gemini;attention\u{7}"
+            "\u{1b}]777;notify;Glance;gemini;attention\u{7}"
         );
     }
 
@@ -314,7 +356,7 @@ mod tests {
         assert_eq!(hook_count(&out, "PermissionRequest"), 1);
         assert_eq!(hook_count(&out, "Stop"), 1);
         let stop = command(&out, "Stop", 0);
-        assert!(stop.contains("notify;Terax;codex;finished"));
+        assert!(stop.contains("notify;Glance;codex;finished"));
         assert!(stop.contains("> /dev/tty"));
         // Codex Stop rejects empty/non-JSON stdout; the hook must emit a no-op.
         assert!(stop.contains("printf '{}'"));
@@ -326,8 +368,8 @@ mod tests {
     fn gemini_uses_matcher_and_named_marker() {
         let out = merge_hooks(json!({}), spec("gemini"));
         assert_eq!(out["hooks"]["BeforeAgent"][0]["matcher"], "*");
-        assert!(command(&out, "AfterAgent", 0).contains("notify;Terax;gemini;finished"));
-        assert!(command(&out, "Notification", 0).contains("notify;Terax;gemini;attention"));
+        assert!(command(&out, "AfterAgent", 0).contains("notify;Glance;gemini;finished"));
+        assert!(command(&out, "Notification", 0).contains("notify;Glance;gemini;attention"));
     }
 
     #[test]
@@ -382,7 +424,7 @@ mod tests {
         });
         let out = merge_hooks(input, spec("claude"));
         assert_eq!(hook_count(&out, "Notification"), 1);
-        assert!(command(&out, "Notification", 0).contains("notify;Terax;attention"));
+        assert!(command(&out, "Notification", 0).contains("notify;Glance;attention"));
     }
 
     #[test]

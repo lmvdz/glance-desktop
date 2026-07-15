@@ -1,14 +1,22 @@
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { Theme } from "./types";
 
-const STORE_PATH = "terax-custom-themes.json";
+const STORE_PATH = "glance-custom-themes.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-custom-themes.json";
 const KEY = "themes";
-const CHANGED_EVENT = "terax://custom-themes-changed";
+const CHANGED_EVENT = "glance://custom-themes-changed";
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
+
 export async function listCustomThemes(): Promise<Theme[]> {
+  await ensureMigrated();
   const v = await store.get<Theme[]>(KEY);
   return Array.isArray(v) ? v : [];
 }

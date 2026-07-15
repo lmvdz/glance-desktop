@@ -1,3 +1,4 @@
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
 import { create } from "zustand";
 import {
   DEFAULT_PREFERENCES,
@@ -14,8 +15,10 @@ type State = Preferences & {
 
 let initPromise: Promise<void> | null = null;
 
-const FAST_BG_KIND_KEY = "terax-ui-bg-kind-shadow";
-const FAST_BG_IMAGE_ID_KEY = "terax-ui-bg-image-shadow";
+const FAST_BG_KIND_KEY = "glance-ui-bg-kind-shadow";
+const LEGACY_FAST_BG_KIND_KEY = "terax-ui-bg-kind-shadow";
+const FAST_BG_IMAGE_ID_KEY = "glance-ui-bg-image-shadow";
+const LEGACY_FAST_BG_IMAGE_ID_KEY = "terax-ui-bg-image-shadow";
 
 function mirrorBgFastPath(
   kind: Preferences["backgroundKind"],
@@ -37,8 +40,14 @@ export function readBgFastPath(): {
 } {
   if (typeof window === "undefined") return { active: false, imageId: null };
   try {
-    const kind = window.localStorage.getItem(FAST_BG_KIND_KEY);
-    const imageId = window.localStorage.getItem(FAST_BG_IMAGE_ID_KEY);
+    const kind = migrateWindowLocalStorageKey(
+      LEGACY_FAST_BG_KIND_KEY,
+      FAST_BG_KIND_KEY,
+    );
+    const imageId = migrateWindowLocalStorageKey(
+      LEGACY_FAST_BG_IMAGE_ID_KEY,
+      FAST_BG_IMAGE_ID_KEY,
+    );
     return { active: kind === "image" && !!imageId, imageId };
   } catch {
     return { active: false, imageId: null };

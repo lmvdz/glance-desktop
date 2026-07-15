@@ -6,31 +6,35 @@ import { formatAiError } from "./errors";
 import { native } from "./native";
 import type { ToolContext } from "../tools/tools";
 
-const TERAX_MD_MAX_BYTES = 32 * 1024;
+const PROJECT_MD_MAX_BYTES = 32 * 1024;
 type MemoryCacheEntry = { content: string | null; mtime: number };
 const projectMemoryCache = new Map<string, MemoryCacheEntry>();
 
-async function readTeraxMd(workspaceRoot: string | null): Promise<string | null> {
-  if (!workspaceRoot) return null;
-  const path = `${workspaceRoot.replace(/\/$/, "")}/TERAX.md`;
-  const cached = projectMemoryCache.get(workspaceRoot);
-  if (cached && Date.now() - cached.mtime < 30_000) return cached.content;
+async function readProjectMemoryFile(path: string): Promise<string | null> {
   try {
     const r = await native.readFile(path);
-    if (r.kind !== "text") {
-      projectMemoryCache.set(workspaceRoot, { content: null, mtime: Date.now() });
-      return null;
-    }
-    const content =
-      r.content.length > TERAX_MD_MAX_BYTES
-        ? r.content.slice(0, TERAX_MD_MAX_BYTES)
-        : r.content;
-    projectMemoryCache.set(workspaceRoot, { content, mtime: Date.now() });
-    return content;
+    if (r.kind !== "text") return null;
+    return r.content.length > PROJECT_MD_MAX_BYTES
+      ? r.content.slice(0, PROJECT_MD_MAX_BYTES)
+      : r.content;
   } catch {
-    projectMemoryCache.set(workspaceRoot, { content: null, mtime: Date.now() });
     return null;
   }
+}
+
+/** Reads the project-memory file, preferring `GLANCE.md`. Falls back to the
+ *  pre-rename `TERAX.md` so a project that already has one keeps working —
+ *  it is never renamed on disk, just read as a fallback. */
+async function readGlanceMd(workspaceRoot: string | null): Promise<string | null> {
+  if (!workspaceRoot) return null;
+  const cached = projectMemoryCache.get(workspaceRoot);
+  if (cached && Date.now() - cached.mtime < 30_000) return cached.content;
+  const root = workspaceRoot.replace(/\/$/, "");
+  const content =
+    (await readProjectMemoryFile(`${root}/GLANCE.md`)) ??
+    (await readProjectMemoryFile(`${root}/TERAX.md`));
+  projectMemoryCache.set(workspaceRoot, { content, mtime: Date.now() });
+  return content;
 }
 
 type LiveSnapshot = {
@@ -75,7 +79,7 @@ type SendOptions = {
 export function createContextAwareTransport(deps: Deps) {
   const run = async (options: SendOptions) => {
     const live = deps.getLive();
-    const projectMemory = await readTeraxMd(live.workspaceRoot);
+    const projectMemory = await readGlanceMd(live.workspaceRoot);
     const envBlock = formatEnvBlock(live);
     const messagesForRun = envBlock
       ? injectEnvIntoLastUser(options.messages, envBlock)

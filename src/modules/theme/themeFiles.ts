@@ -5,15 +5,20 @@ import { appConfigDir, join } from "@tauri-apps/api/path";
 import type { Theme } from "./types";
 import { validateTheme, type ValidationResult } from "./validateTheme";
 
-const THEME_FILE_EXT = ".terax-theme";
-const THEME_EDIT_EVENT = "terax://theme-edit";
+const THEME_FILE_EXT = ".glance-theme";
+/** Pre-rename extension — files exported before this concern shipped still
+ *  carry it; accepted on import (drag-drop, file picker) so nothing a user
+ *  saved stops working, but every new export uses `THEME_FILE_EXT`. */
+const LEGACY_THEME_FILE_EXT = ".terax-theme";
+const THEME_EDIT_EVENT = "glance://theme-edit";
 
 export type ThemeEditRequest =
   | { action: "create" }
   | { action: "edit"; id: string };
 
 export function isThemeFilePath(path: string): boolean {
-  return path.toLowerCase().endsWith(THEME_FILE_EXT);
+  const lower = path.toLowerCase();
+  return lower.endsWith(THEME_FILE_EXT) || lower.endsWith(LEGACY_THEME_FILE_EXT);
 }
 
 async function themesDir(): Promise<string> {

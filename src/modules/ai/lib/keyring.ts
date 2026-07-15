@@ -1,7 +1,9 @@
+import { planKeyValueMigration } from "@/modules/migrations/keyValueMigration";
 import { invoke } from "@tauri-apps/api/core";
 import {
   getProvider,
   KEYRING_SERVICE,
+  LEGACY_KEYRING_SERVICE,
   PROVIDERS,
   providerSupportsKey,
   type CustomEndpoint,
@@ -27,8 +29,70 @@ export const EMPTY_PROVIDER_KEYS: ProviderKeys = {
   ollama: null,
 };
 
+/**
+ * Highest-stakes migration in this concern: a wrong move here orphans a
+ * user's saved API keys. One-time, per-account, read-old-write-new-and-
+ * clear-old copy from the pre-rename keyring service (`terax-ai`) into the
+ * new one (`glance-ai`) — never the other way, and never overwriting a key
+ * that already exists under the new service. The pure "what should happen"
+ * decision (`planKeyValueMigration`) is unit-tested; this function is the
+ * thin, best-effort IO shell around it (secrets_get/set/delete are already
+ * generic invoke commands keyed by service+account — no Rust change needed).
+ */
+export async function migrateKeyringAccount(account: string): Promise<void> {
+  if (!account) return; // local-only providers (lmstudio/mlx/ollama) have no account
+  try {
+    const [newValue, oldValue] = await Promise.all([
+      invoke<string | null>("secrets_get", {
+        service: KEYRING_SERVICE,
+        account,
+      }).catch(() => null),
+      invoke<string | null>("secrets_get", {
+        service: LEGACY_KEYRING_SERVICE,
+        account,
+      }).catch(() => null),
+    ]);
+    const plan = planKeyValueMigration(
+      newValue && newValue.length > 0 ? newValue : null,
+      oldValue && oldValue.length > 0 ? oldValue : null,
+    );
+    if (!plan.shouldWriteNew) return;
+    await invoke("secrets_set", {
+      service: KEYRING_SERVICE,
+      account,
+      password: plan.value,
+    });
+    if (plan.shouldDeleteOld) {
+      try {
+        await invoke("secrets_delete", {
+          service: LEGACY_KEYRING_SERVICE,
+          account,
+        });
+      } catch {
+        /* not fatal — the new service already has the key */
+      }
+    }
+  } catch {
+    /* migration is best-effort; never block key reads on it */
+  }
+}
+
+const migratedAccounts = new Set<string>();
+
+/** Migrates a batch of keyring accounts, each exactly once for the life of
+ *  the app (tracked per-account, not per-call) — safe to call redundantly
+ *  from multiple entrypoints (static provider keys vs. dynamic custom-
+ *  endpoint keys are migrated from different call sites, see `getAllKeys`
+ *  and `getAllCustomEndpointKeys`). */
+async function ensureKeyringMigrated(accounts: readonly string[]): Promise<void> {
+  const pending = accounts.filter((a) => a && !migratedAccounts.has(a));
+  for (const a of pending) migratedAccounts.add(a);
+  await Promise.all(pending.map((a) => migrateKeyringAccount(a)));
+}
+
 export async function getKey(provider: ProviderId): Promise<string | null> {
   if (!providerSupportsKey(provider)) return null;
+  await ensureKeyringMigrated([getProvider(provider).keyringAccount]);
   try {
     const v = await invoke<string | null>("secrets_get", {
       service: KEYRING_SERVICE,
@@ -68,6 +132,7 @@ export async function clearKey(provider: ProviderId): Promise<void> {
 export async function getAllKeys(): Promise<ProviderKeys> {
   const out = { ...EMPTY_PROVIDER_KEYS };
   const need = PROVIDERS.filter((p) => providerSupportsKey(p.id));
+  await ensureKeyringMigrated(need.map((p) => p.keyringAccount));
   try {
     const results = await invoke<(string | null)[]>("secrets_get_all", {
       service: KEYRING_SERVICE,
@@ -98,6 +163,7 @@ function compatKeyringAccount(endpointId: string): string {
 export async function getCustomEndpointKey(
   endpointId: string,
 ): Promise<string | null> {
+  await ensureKeyringMigrated([compatKeyringAccount(endpointId)]);
   try {
     const v = await invoke<string | null>("secrets_get", {
       service: KEYRING_SERVICE,
@@ -138,8 +204,10 @@ export async function getAllCustomEndpointKeys(
 ): Promise<CustomEndpointKeys> {
   if (endpoints.length === 0) return {};
   const out: CustomEndpointKeys = {};
+  const accountsForMigration = endpoints.map((e) => compatKeyringAccount(e.id));
+  await ensureKeyringMigrated(accountsForMigration);
   try {
-    const accounts = endpoints.map((e) => compatKeyringAccount(e.id));
+    const accounts = accountsForMigration;
     const results = await invoke<(string | null)[]>("secrets_get_all", {
       service: KEYRING_SERVICE,
       accounts,

@@ -1,14 +1,17 @@
 // Non-critical, single-window usage ranking. localStorage keeps it off the
 // preferences store and its IPC change-broadcast path.
 
-const KEY = "terax-palette-mru";
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
+
+const KEY = "glance-palette-mru";
+const LEGACY_KEY = "terax-palette-mru";
 const MAX_ENTRIES = 120;
 
 type MruMap = Record<string, number>;
 
 function read(): MruMap {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = migrateWindowLocalStorageKey(LEGACY_KEY, KEY);
     return raw ? (JSON.parse(raw) as MruMap) : {};
   } catch {
     return {};

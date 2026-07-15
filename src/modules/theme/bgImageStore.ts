@@ -1,34 +1,134 @@
-const DB_NAME = "terax-bg-images";
+const DB_NAME = "glance-bg-images";
+/** Pre-rename database name — migrated in on first access, see `ensureMigrated`. */
+const OLD_DB_NAME = "terax-bg-images";
 const STORE = "images";
 const VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  const p = new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, VERSION);
+function openNamedDb(name: string): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(name, VERSION);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE);
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE);
+      }
     };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onclose = () => {
-        if (dbPromise === p) dbPromise = null;
-      };
-      resolve(db);
-    };
+    req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error("IndexedDB blocked by another tab"));
-  }).catch((e) => {
+  });
+}
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  const p = openNamedDb(DB_NAME).then((db) => {
+    db.onclose = () => {
+      if (dbPromise === p) dbPromise = null;
+    };
+    return db;
+  });
+  dbPromise = p.catch((e) => {
     if (dbPromise === p) dbPromise = null;
     throw e;
   });
-  dbPromise = p;
-  return p;
+  return dbPromise;
+}
+
+function listEntries(db: IDBDatabase): Promise<Array<[string, Blob]>> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const entries: Array<[string, Blob]> = [];
+    const req = tx.objectStore(STORE).openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        entries.push([String(cursor.key), cursor.value as Blob]);
+        cursor.continue();
+      } else {
+        resolve(entries);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function clearStore(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function writeEntries(
+  db: IDBDatabase,
+  entries: ReadonlyArray<[string, Blob]>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const objStore = tx.objectStore(STORE);
+    for (const [key, blob] of entries) objStore.put(blob, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+/**
+ * One-time, best-effort copy of every background image from the pre-rename
+ * `terax-bg-images` database into `glance-bg-images`, only when the new
+ * database is still empty. `indexedDB.databases()` (where supported) avoids
+ * ever opening — and thereby creating — the legacy database on a fresh
+ * install; where it's unsupported we fall back to opening it directly (an
+ * empty database left behind on a truly-fresh install is harmless).
+ * The pure "should we copy, and what" decision reuses
+ * `planLazyStoreMigration` — a whole-object-store swap is the same shape as
+ * a whole-Tauri-store-file swap: copy every old entry only when the new
+ * side is still empty.
+ */
+let migrationPromise: Promise<void> | null = null;
+
+async function ensureMigrated(): Promise<void> {
+  if (!migrationPromise) migrationPromise = runMigration();
+  return migrationPromise;
+}
+
+async function runMigration(): Promise<void> {
+  try {
+    if (typeof indexedDB.databases === "function") {
+      const dbs = await indexedDB.databases();
+      if (!dbs.some((d) => d.name === OLD_DB_NAME)) return;
+    }
+    const db = await openDb();
+    const newEntries = await listEntries(db);
+    if (newEntries.length > 0) return; // new store already has data
+    const oldDb = await openNamedDb(OLD_DB_NAME);
+    try {
+      const oldEntries = await listEntries(oldDb);
+      const { planLazyStoreMigration } = await import(
+        "@/modules/migrations/lazyStoreMigration"
+      );
+      const plan = planLazyStoreMigration(newEntries, oldEntries);
+      if (!plan.shouldMigrate) return;
+      await writeEntries(db, plan.entriesToWrite);
+      try {
+        await clearStore(oldDb);
+      } catch {
+        /* not fatal — new store already has the data */
+      }
+    } finally {
+      oldDb.close();
+    }
+  } catch {
+    /* migration is best-effort; never block a background-image read/write */
+  }
 }
 
 export async function putBgImage(id: string, blob: Blob): Promise<void> {
+  await ensureMigrated();
   const db = await openDb();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -49,6 +149,7 @@ export async function putBgImage(id: string, blob: Blob): Promise<void> {
 }
 
 export async function getBgImage(id: string): Promise<Blob | null> {
+  await ensureMigrated();
   const db = await openDb();
   return new Promise<Blob | null>((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
@@ -59,6 +160,7 @@ export async function getBgImage(id: string): Promise<Blob | null> {
 }
 
 export async function deleteBgImage(id: string): Promise<void> {
+  await ensureMigrated();
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
