@@ -1,3 +1,4 @@
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type TodoStatus = "pending" | "in_progress" | "completed";
@@ -9,12 +10,19 @@ export type Todo = {
   status: TodoStatus;
 };
 
-const STORE_PATH = "terax-ai-todos.json";
+const STORE_PATH = "glance-ai-todos.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-ai-todos.json";
 const todosKey = (sessionId: string) => `todos:${sessionId}`;
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
 
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
+
 export async function loadTodos(sessionId: string): Promise<Todo[]> {
+  await ensureMigrated();
   return (await store.get<Todo[]>(todosKey(sessionId))) ?? [];
 }
 
@@ -22,10 +30,12 @@ export async function saveTodos(
   sessionId: string,
   todos: Todo[],
 ): Promise<void> {
+  await ensureMigrated();
   await store.set(todosKey(sessionId), todos);
 }
 
 export async function deleteTodos(sessionId: string): Promise<void> {
+  await ensureMigrated();
   await store.delete(todosKey(sessionId));
 }
 

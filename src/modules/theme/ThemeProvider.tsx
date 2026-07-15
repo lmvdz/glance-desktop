@@ -6,10 +6,12 @@ import {
   useMemo,
   useState,
 } from "react";
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
 import {
   DEFAULT_THEME_ID,
   loadPreferences,
   onPreferencesChange,
+  resolveThemeId,
   setTheme as persistTheme,
   setThemeId as persistThemeId,
   type ThemePref,
@@ -44,12 +46,14 @@ type ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState | null>(null);
 
-const FAST_PATH_KEY = "terax-ui-theme-shadow";
-const FAST_PATH_THEME_ID = "terax-ui-theme-id-shadow";
+const FAST_PATH_KEY = "glance-ui-theme-shadow";
+const LEGACY_FAST_PATH_KEY = "terax-ui-theme-shadow";
+const FAST_PATH_THEME_ID = "glance-ui-theme-id-shadow";
+const LEGACY_FAST_PATH_THEME_ID = "terax-ui-theme-id-shadow";
 
 function readFastMode(fallback: ThemePref): ThemePref {
   if (typeof window === "undefined") return fallback;
-  const v = window.localStorage.getItem(FAST_PATH_KEY);
+  const v = migrateWindowLocalStorageKey(LEGACY_FAST_PATH_KEY, FAST_PATH_KEY);
   return v === "dark" || v === "light" || v === "system" ? v : fallback;
 }
 
@@ -59,7 +63,13 @@ function writeFastMode(t: ThemePref): void {
 
 function readFastThemeId(): string {
   if (typeof window === "undefined") return DEFAULT_THEME_ID;
-  return window.localStorage.getItem(FAST_PATH_THEME_ID) ?? DEFAULT_THEME_ID;
+  const stored = migrateWindowLocalStorageKey(
+    LEGACY_FAST_PATH_THEME_ID,
+    FAST_PATH_THEME_ID,
+  );
+  if (stored === null) return DEFAULT_THEME_ID;
+  // The fast-path shadow can itself hold the pre-rename literal default id.
+  return resolveThemeId(stored);
 }
 
 function writeFastThemeId(id: string): void {

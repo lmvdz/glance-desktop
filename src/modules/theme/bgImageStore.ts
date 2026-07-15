@@ -1,34 +1,139 @@
-const DB_NAME = "terax-bg-images";
+import { createMigrationGate } from "@/modules/migrations/migrationGate";
+
+const DB_NAME = "glance-bg-images";
+/** Pre-rename database name — migrated in on first access, see `ensureMigrated`. */
+const OLD_DB_NAME = "terax-bg-images";
 const STORE = "images";
 const VERSION = 1;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDb(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  const p = new Promise<IDBDatabase>((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, VERSION);
+function openNamedDb(name: string): Promise<IDBDatabase> {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(name, VERSION);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE);
+      if (!req.result.objectStoreNames.contains(STORE)) {
+        req.result.createObjectStore(STORE);
+      }
     };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onclose = () => {
-        if (dbPromise === p) dbPromise = null;
-      };
-      resolve(db);
-    };
+    req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
     req.onblocked = () => reject(new Error("IndexedDB blocked by another tab"));
-  }).catch((e) => {
+  });
+}
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  const p = openNamedDb(DB_NAME).then((db) => {
+    db.onclose = () => {
+      if (dbPromise === p) dbPromise = null;
+    };
+    return db;
+  });
+  dbPromise = p.catch((e) => {
     if (dbPromise === p) dbPromise = null;
     throw e;
   });
-  dbPromise = p;
-  return p;
+  return dbPromise;
+}
+
+function listEntries(db: IDBDatabase): Promise<Array<[string, Blob]>> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const entries: Array<[string, Blob]> = [];
+    const req = tx.objectStore(STORE).openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        entries.push([String(cursor.key), cursor.value as Blob]);
+        cursor.continue();
+      } else {
+        resolve(entries);
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function clearStore(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+function writeEntries(
+  db: IDBDatabase,
+  entries: ReadonlyArray<[string, Blob]>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const objStore = tx.objectStore(STORE);
+    for (const [key, blob] of entries) objStore.put(blob, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+/**
+ * One-time copy of every background image from the pre-rename
+ * `terax-bg-images` database into `glance-bg-images`, only when the new
+ * database is still empty. The pure "should we copy, and what" decision
+ * reuses `planLazyStoreMigration` — a whole-object-store swap is the same
+ * shape as a whole-Tauri-store-file swap: copy every old entry only when
+ * the new side is still empty.
+ *
+ * `indexedDB.databases()` (where supported) is the ONLY way to check
+ * whether the legacy database exists without opening — and thereby
+ * creating — it: `indexedDB.open(name, …)` unconditionally creates a
+ * database that doesn't exist yet. Where `databases()` is unsupported
+ * (older WebViews), we skip legacy migration entirely rather than open the
+ * legacy name blind — that used to leave a fresh install with a spurious,
+ * permanently-created empty `terax-bg-images` database every time. The
+ * cost is that any real legacy images on such a WebView won't be
+ * auto-copied; that's an acceptable trade for never fabricating the
+ * database this fix exists to avoid creating.
+ *
+ * Memoized as an in-flight PROMISE (via `createMigrationGate`), not a
+ * "done" boolean: every entrypoint (`putBgImage`/`getBgImage`/
+ * `deleteBgImage`) awaits the same gate, and a FAILED attempt clears the
+ * memo so the next call in this session retries instead of the old images
+ * staying stranded for the rest of the session.
+ */
+const ensureMigrated = createMigrationGate(runMigration);
+
+async function runMigration(): Promise<void> {
+  if (typeof indexedDB.databases !== "function") return;
+  const dbs = await indexedDB.databases();
+  if (!dbs.some((d) => d.name === OLD_DB_NAME)) return; // nothing to migrate — never open/create it
+  const db = await openDb();
+  const newEntries = await listEntries(db);
+  if (newEntries.length > 0) return; // new store already has data
+  const oldDb = await openNamedDb(OLD_DB_NAME);
+  try {
+    const oldEntries = await listEntries(oldDb);
+    const { planLazyStoreMigration } = await import(
+      "@/modules/migrations/lazyStoreMigration"
+    );
+    const plan = planLazyStoreMigration(newEntries, oldEntries);
+    if (!plan.shouldMigrate) return;
+    await writeEntries(db, plan.entriesToWrite);
+    try {
+      await clearStore(oldDb);
+    } catch {
+      /* not fatal — new store already has the data */
+    }
+  } finally {
+    oldDb.close();
+  }
 }
 
 export async function putBgImage(id: string, blob: Blob): Promise<void> {
+  await ensureMigrated();
   const db = await openDb();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -49,6 +154,7 @@ export async function putBgImage(id: string, blob: Blob): Promise<void> {
 }
 
 export async function getBgImage(id: string): Promise<Blob | null> {
+  await ensureMigrated();
   const db = await openDb();
   return new Promise<Blob | null>((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
@@ -59,6 +165,7 @@ export async function getBgImage(id: string): Promise<Blob | null> {
 }
 
 export async function deleteBgImage(id: string): Promise<void> {
+  await ensureMigrated();
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");

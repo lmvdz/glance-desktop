@@ -1,3 +1,4 @@
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 export type AgentIconId =
@@ -79,11 +80,17 @@ export const BUILTIN_AGENTS: readonly Agent[] = [
   },
 ] as const;
 
-const STORE_PATH = "terax-ai-agents.json";
+const STORE_PATH = "glance-ai-agents.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-ai-agents.json";
 const KEY_CUSTOM = "customAgents";
 const KEY_ACTIVE = "activeAgentId";
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 200 });
+
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
 
 export type LoadedAgents = {
   custom: Agent[];
@@ -91,6 +98,7 @@ export type LoadedAgents = {
 };
 
 export async function loadAgents(): Promise<LoadedAgents> {
+  await ensureMigrated();
   // One IPC roundtrip via entries() instead of two sequential get()s.
   const entries = await store.entries();
   let custom: Agent[] | undefined;
@@ -103,11 +111,13 @@ export async function loadAgents(): Promise<LoadedAgents> {
 }
 
 export async function saveCustomAgents(custom: Agent[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_CUSTOM, custom);
   await store.save();
 }
 
 export async function saveActiveAgentId(id: string): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_ACTIVE, id);
   await store.save();
 }

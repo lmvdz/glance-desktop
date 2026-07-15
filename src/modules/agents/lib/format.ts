@@ -2,7 +2,7 @@ const LABELS: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   gemini: "Gemini",
-  terax: "Terax",
+  glance: "Glance",
 };
 
 export function displayAgent(agent: string): string {

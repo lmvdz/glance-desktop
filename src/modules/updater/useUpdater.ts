@@ -1,11 +1,16 @@
+import { IS_LINUX } from "@/lib/platform";
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useEffect, useState } from "react";
-import { IS_LINUX } from "@/lib/platform";
 
-const LAST_CHECK_KEY = "terax:updater:last-check";
+const LAST_CHECK_KEY = "glance:updater:last-check";
+const LEGACY_LAST_CHECK_KEY = "terax:updater:last-check";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+// TODO(M04): repoint to this fork's own release repo once it exists —
+// tracked as the release-recredential-rebrand concern (updater endpoint /
+// pubkey in tauri.conf.json are explicitly out of scope for this rename).
 const GITHUB_LATEST_RELEASE =
   "https://api.github.com/repos/crynta/terax-ai/releases/latest";
 
@@ -86,7 +91,11 @@ export function useUpdater({ autoCheck = true }: HookOptions = {}) {
 
   const runCheck = useCallback(async ({ manual }: Options = {}) => {
     if (!manual) {
-      const last = Number(localStorage.getItem(LAST_CHECK_KEY) ?? 0);
+      const stored = migrateWindowLocalStorageKey(
+        LEGACY_LAST_CHECK_KEY,
+        LAST_CHECK_KEY,
+      );
+      const last = Number(stored ?? 0);
       if (Date.now() - last < CHECK_INTERVAL_MS) return;
     }
     setStatus({ kind: "checking" });

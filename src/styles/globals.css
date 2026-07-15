@@ -166,7 +166,7 @@
   --editor-font-size: 13px;
 }
 
-html[data-chrome="borderless"] .terax-bg-surface {
+html[data-chrome="borderless"] .glance-bg-surface {
   border-radius: 12px;
 }
 .zoom-content {
@@ -326,7 +326,7 @@ html *::-webkit-scrollbar {
   --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes terax-collapsible-down {
+@keyframes glance-collapsible-down {
   from {
     height: 0;
     opacity: 0;
@@ -337,7 +337,7 @@ html *::-webkit-scrollbar {
   }
 }
 
-@keyframes terax-collapsible-up {
+@keyframes glance-collapsible-up {
   from {
     height: var(--radix-collapsible-content-height);
     opacity: 1;
@@ -348,20 +348,20 @@ html *::-webkit-scrollbar {
   }
 }
 
-.terax-collapsible-content {
+.glance-collapsible-content {
   overflow: hidden;
 }
-.terax-collapsible-content[data-state="open"] {
-  animation: terax-collapsible-down var(--dur-base) var(--ease-soft);
+.glance-collapsible-content[data-state="open"] {
+  animation: glance-collapsible-down var(--dur-base) var(--ease-soft);
 }
-.terax-collapsible-content[data-state="closed"] {
-  animation: terax-collapsible-up var(--dur-base) var(--ease-soft);
+.glance-collapsible-content[data-state="closed"] {
+  animation: glance-collapsible-up var(--dur-base) var(--ease-soft);
 }
 
 /* Height auto<->0 reveal without JS measuring: animate the grid track from 0fr
  * to 1fr. The inner child must be the sole grid row with min-height:0. Used by
  * the docked AI input bar and the composer voice-status row. */
-.terax-reveal {
+.glance-reveal {
   display: grid;
   grid-template-rows: 0fr;
   transition:
@@ -369,16 +369,16 @@ html *::-webkit-scrollbar {
     opacity var(--dur-base) var(--ease-premium);
   opacity: 0;
 }
-.terax-reveal[data-state="open"] {
+.glance-reveal[data-state="open"] {
   grid-template-rows: 1fr;
   opacity: 1;
 }
-.terax-reveal > * {
+.glance-reveal > * {
   min-height: 0;
   overflow: hidden;
 }
 
-@keyframes terax-panel-in {
+@keyframes glance-panel-in {
   from {
     opacity: 0;
     transform: translateX(-40px);
@@ -388,11 +388,11 @@ html *::-webkit-scrollbar {
     transform: translateX(0);
   }
 }
-.terax-panel-in {
-  animation: terax-panel-in var(--dur-slow) var(--ease-premium);
+.glance-panel-in {
+  animation: glance-panel-in var(--dur-slow) var(--ease-premium);
 }
 
-@keyframes terax-tab-in {
+@keyframes glance-tab-in {
   from {
     opacity: 0;
     transform: scale(0.86);
@@ -402,11 +402,11 @@ html *::-webkit-scrollbar {
     transform: scale(1);
   }
 }
-.terax-tab-in {
-  animation: terax-tab-in var(--dur-base) var(--ease-premium);
+.glance-tab-in {
+  animation: glance-tab-in var(--dur-base) var(--ease-premium);
 }
 
-@keyframes terax-pill-in {
+@keyframes glance-pill-in {
   from {
     opacity: 0;
     transform: translateY(2px) scale(0.96);
@@ -416,13 +416,13 @@ html *::-webkit-scrollbar {
     transform: translateY(0) scale(1);
   }
 }
-.terax-pill-in {
-  animation: terax-pill-in var(--dur-base) var(--ease-premium);
+.glance-pill-in {
+  animation: glance-pill-in var(--dur-base) var(--ease-premium);
 }
 
 /* Text shimmer loop (replaces motion background-position animation). Driven by
  * --shimmer-duration / --shimmer-spread set inline per instance. */
-@keyframes terax-shimmer {
+@keyframes glance-shimmer {
   from {
     background-position: 100% center;
   }
@@ -430,7 +430,7 @@ html *::-webkit-scrollbar {
     background-position: 0% center;
   }
 }
-.terax-shimmer {
+.glance-shimmer {
   background-repeat: no-repeat, padding-box;
   background-size:
     250% 100%,
@@ -446,7 +446,7 @@ html *::-webkit-scrollbar {
       var(--color-muted-foreground),
       var(--color-muted-foreground)
     );
-  animation: terax-shimmer var(--shimmer-duration, 2s) linear infinite;
+  animation: glance-shimmer var(--shimmer-duration, 2s) linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -455,10 +455,10 @@ html *::-webkit-scrollbar {
     --dur-base: 0.01ms;
     --dur-slow: 0.01ms;
   }
-  .terax-reveal {
+  .glance-reveal {
     transition: none;
   }
-  .terax-shimmer {
+  .glance-shimmer {
     animation: none;
     background-position: 0% center;
   }

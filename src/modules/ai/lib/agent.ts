@@ -155,8 +155,11 @@ export async function buildLanguageModel(
         baseURL: "https://openrouter.ai/api/v1",
         apiKey: key,
         headers: {
-          "HTTP-Referer": "https://terax.ai",
-          "X-Title": "Terax",
+          // OpenRouter attribution headers — identifies this fork, not
+          // upstream terax.ai. TODO: swap for a dedicated site URL if/when
+          // this fork gets one; the repo URL is the honest fallback.
+          "HTTP-Referer": "https://github.com/lmvdz/glance-desktop",
+          "X-Title": "Glance",
         },
       })(resolvedModelId);
       break;
@@ -316,7 +319,7 @@ function buildStableSystem(
     : "";
   const memoryBlock =
     projectMemory && projectMemory.trim().length > 0
-      ? `\n\n## PROJECT — TERAX.md\n${projectMemory.trim()}`
+      ? `\n\n## PROJECT — GLANCE.md\n${projectMemory.trim()}`
       : "";
   return `${base}${memoryBlock}${personaBlock}${customBlock}`;
 }

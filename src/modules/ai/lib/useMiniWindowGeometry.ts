@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
 import {
   applyDrag,
   applyResize,
@@ -9,7 +10,8 @@ import {
   type Viewport,
 } from "./miniWindowGeometry";
 
-const STORE_KEY = "terax-ui-mini-window-geom";
+const STORE_KEY = "glance-ui-mini-window-geom";
+const LEGACY_STORE_KEY = "terax-ui-mini-window-geom";
 
 const viewport = (): Viewport => ({
   vw: window.innerWidth,
@@ -18,7 +20,7 @@ const viewport = (): Viewport => ({
 
 function loadGeom(): Geom | null {
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
+    const raw = migrateWindowLocalStorageKey(LEGACY_STORE_KEY, STORE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw) as Partial<Geom>;
     if (

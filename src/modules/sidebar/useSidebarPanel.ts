@@ -5,15 +5,19 @@ import {
   useRef,
   useState,
 } from "react";
+import { migrateWindowLocalStorageKey } from "@/modules/migrations/localStorageMigration";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import type { SidebarViewId } from "./types";
 
 export const SIDEBAR_DEFAULT_WIDTH = 260;
 export const SIDEBAR_MIN_WIDTH = 220;
 export const SIDEBAR_MAX_WIDTH = 480;
-const SIDEBAR_WIDTH_STORAGE_KEY = "terax.sidebar.width";
-const SIDEBAR_VIEW_STORAGE_KEY = "terax.sidebar.view";
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "terax.sidebar.collapsed";
+const SIDEBAR_WIDTH_STORAGE_KEY = "glance.sidebar.width";
+const LEGACY_SIDEBAR_WIDTH_STORAGE_KEY = "terax.sidebar.width";
+const SIDEBAR_VIEW_STORAGE_KEY = "glance.sidebar.view";
+const LEGACY_SIDEBAR_VIEW_STORAGE_KEY = "terax.sidebar.view";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "glance.sidebar.collapsed";
+const LEGACY_SIDEBAR_COLLAPSED_STORAGE_KEY = "terax.sidebar.collapsed";
 
 function clampSidebarWidth(width: number): number {
   return Math.min(
@@ -24,7 +28,10 @@ function clampSidebarWidth(width: number): number {
 
 function readSidebarWidth(): number {
   try {
-    const stored = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    const stored = migrateWindowLocalStorageKey(
+      LEGACY_SIDEBAR_WIDTH_STORAGE_KEY,
+      SIDEBAR_WIDTH_STORAGE_KEY,
+    );
     const parsed = stored ? Number.parseInt(stored, 10) : NaN;
     return Number.isFinite(parsed)
       ? clampSidebarWidth(parsed)
@@ -36,7 +43,10 @@ function readSidebarWidth(): number {
 
 function readSidebarView(): SidebarViewId {
   try {
-    const stored = window.localStorage.getItem(SIDEBAR_VIEW_STORAGE_KEY);
+    const stored = migrateWindowLocalStorageKey(
+      LEGACY_SIDEBAR_VIEW_STORAGE_KEY,
+      SIDEBAR_VIEW_STORAGE_KEY,
+    );
     if (stored === "explorer" || stored === "source-control") return stored;
   } catch {
     // ignore
@@ -46,7 +56,12 @@ function readSidebarView(): SidebarViewId {
 
 function readSidebarCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1";
+    return (
+      migrateWindowLocalStorageKey(
+        LEGACY_SIDEBAR_COLLAPSED_STORAGE_KEY,
+        SIDEBAR_COLLAPSED_STORAGE_KEY,
+      ) === "1"
+    );
   } catch {
     return false;
   }

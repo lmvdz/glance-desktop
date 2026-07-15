@@ -8,8 +8,11 @@ import { arch, platform } from "@tauri-apps/plugin-os";
 import { useEffect, useState } from "react";
 import { SectionHeader } from "../components/SectionHeader";
 
-const REPO_URL = "https://github.com/crynta/terax-ai";
-const WEBSITE = "https://terax.app";
+const REPO_URL = "https://github.com/lmvdz/glance-desktop";
+// TODO: this fork has no dedicated website yet — pointing "Website" at the
+// GitHub repo (rather than fabricating a domain) per the rename plan's
+// guidance for uncertain fork URLs. Swap for a real site if one is stood up.
+const WEBSITE = REPO_URL;
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
@@ -103,7 +106,7 @@ export function AboutSection() {
             className="inline-flex items-center gap-1.5 rounded-md text-[12px] underline-offset-2 hover:text-foreground hover:underline"
           >
             <HugeiconsIcon icon={GithubIcon} size={12} strokeWidth={1.75} />
-            crynta/terax-ai
+            lmvdz/glance-desktop
           </button>
         </dd>
         <dt className="text-muted-foreground">Website</dt>
@@ -114,7 +117,7 @@ export function AboutSection() {
             className="inline-flex items-center gap-1.5 rounded-md text-[12px] underline-offset-2 hover:text-foreground hover:underline"
           >
             <HugeiconsIcon icon={Globe02Icon} size={12} strokeWidth={1.75} />
-            terax.app
+            github.com/lmvdz/glance-desktop
           </button>
         </dd>
       </dl>

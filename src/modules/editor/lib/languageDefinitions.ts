@@ -457,8 +457,11 @@ export const LANGUAGES: LanguageDefinition[] = [
       ),
   },
   {
-    name: "Terax Theme",
-    extensions: ["terax-theme"],
+    name: "Glance Theme",
+    // "terax-theme" kept for back-compat: theme files exported before the
+    // rename still carry that extension and should still get JSON syntax
+    // highlighting when opened in the editor.
+    extensions: ["glance-theme", "terax-theme"],
     loader: async () => {
       const [{ json }, { colorSwatches }] = await Promise.all([
         import("@codemirror/lang-json"),

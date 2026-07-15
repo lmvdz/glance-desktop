@@ -118,7 +118,7 @@ export function IntervenePane({
   const why = whyStopped(unit);
 
   // Send a turn INTO the same ACP session (POST /api/command {type:"prompt"}) — never a keystroke/PTY
-  // path (the terax send_to_agent anti-pattern). Show the turn optimistically; the poll reconciles it.
+  // path (the glance send_to_agent anti-pattern). Show the turn optimistically; the poll reconciles it.
   const steer = async () => {
     const message = steerText.trim();
     if (!message || steering) return;

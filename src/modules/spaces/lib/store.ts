@@ -1,5 +1,6 @@
-import { LazyStore } from "@tauri-apps/plugin-store";
+import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
 import type { WorkspaceEnv } from "@/modules/workspace";
+import { LazyStore } from "@tauri-apps/plugin-store";
 import type { SerializedTab } from "./serialize";
 
 export type SpaceMeta = {
@@ -18,13 +19,19 @@ export type SpaceState = {
   activeTabIndex: number;
 };
 
-const STORE_PATH = "terax-spaces.json";
+const STORE_PATH = "glance-spaces.json";
+/** Pre-rename store name — migrated in on first access, see `ensureMigrated`. */
+const OLD_STORE_PATH = "terax-spaces.json";
 const KEY_SPACES = "spaces";
 const KEY_ACTIVE = "activeId";
 const STATE_PREFIX = "state:";
 const stateKey = (id: string) => `${STATE_PREFIX}${id}`;
 
 const store = new LazyStore(STORE_PATH, { defaults: {}, autoSave: 500 });
+
+function ensureMigrated(): Promise<void> {
+  return migrateLazyStoreOnce(store, STORE_PATH, OLD_STORE_PATH);
+}
 
 export type LoadedSpaces = {
   spaces: SpaceMeta[];
@@ -33,6 +40,7 @@ export type LoadedSpaces = {
 };
 
 export async function loadAll(): Promise<LoadedSpaces> {
+  await ensureMigrated();
   const entries = await store.entries();
   let spaces: SpaceMeta[] = [];
   let activeId: string | null = null;
@@ -48,18 +56,22 @@ export async function loadAll(): Promise<LoadedSpaces> {
 }
 
 export async function saveSpacesList(spaces: SpaceMeta[]): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_SPACES, spaces);
 }
 
 export async function saveActiveId(id: string | null): Promise<void> {
+  await ensureMigrated();
   await store.set(KEY_ACTIVE, id);
 }
 
 export async function saveState(id: string, state: SpaceState): Promise<void> {
+  await ensureMigrated();
   await store.set(stateKey(id), state);
 }
 
 export async function deleteSpaceData(id: string): Promise<void> {
+  await ensureMigrated();
   await store.delete(stateKey(id));
 }
 

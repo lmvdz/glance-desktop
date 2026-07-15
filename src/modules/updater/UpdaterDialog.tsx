@@ -14,6 +14,12 @@ import { useUpdater } from "./useUpdater";
 
 type DistroKey = "arch" | "debian" | "fedora";
 
+// TODO(M04): these commands name the ARTIFACTS this app downloads from
+// GITHUB_LATEST_RELEASE (useUpdater.ts) — still `crynta/terax-ai` release
+// filenames, deliberately left alone here (see that file's TODO). Update
+// together once the fork ships its own signed releases with Glance-named
+// artifacts; changing the text without changing the download source would
+// make this dialog lie about what it actually fetched.
 function distroCommand(key: DistroKey, version: string): string {
   switch (key) {
     case "arch":
@@ -92,12 +98,12 @@ export function UpdaterDialog() {
               : downloading
                 ? "Downloading update…"
                 : manual
-                  ? `Terax v${manual.version} is available`
-                  : `Terax v${update?.version} is available`}
+                  ? `Glance v${manual.version} is available`
+                  : `Glance v${update?.version} is available`}
           </DialogTitle>
           <DialogDescription>
             {ready
-              ? "Restart Terax to finish installing."
+              ? "Restart Glance to finish installing."
               : downloading
                 ? progress !== null
                   ? `${progress.toFixed(0)}% — ${formatBytes(status.downloaded)}`

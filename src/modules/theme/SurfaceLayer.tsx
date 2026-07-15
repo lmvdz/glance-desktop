@@ -82,7 +82,7 @@ function BackgroundImage({ fastImageId }: { fastImageId: string | null }) {
   return createPortal(
     <div
       aria-hidden
-      className="terax-bg-surface"
+      className="glance-bg-surface"
       style={{
         position: "fixed",
         inset: 0,
