@@ -14,12 +14,15 @@ import { useUpdater } from "./useUpdater";
 
 type DistroKey = "arch" | "debian" | "fedora";
 
-// TODO(M04): these commands name the ARTIFACTS this app downloads from
-// GITHUB_LATEST_RELEASE (useUpdater.ts) — still `crynta/terax-ai` release
-// filenames, deliberately left alone here (see that file's TODO). Update
-// together once the fork ships its own signed releases with Glance-named
-// artifacts; changing the text without changing the download source would
-// make this dialog lie about what it actually fetched.
+// TODO(post-M04): GITHUB_LATEST_RELEASE (useUpdater.ts) now points at the
+// fork's own repo (lmvdz/glance-desktop), but these commands still name the
+// OLD `crynta/terax-ai` artifact filenames (Terax_*.deb, Terax-*.rpm) and the
+// upstream AUR package (terax-bin). The fork hasn't cut a signed release yet
+// to confirm its real bundle names (see docs/RELEASE.md), so changing this
+// text now would be a guess. Update once the first fork release ships —
+// verify the actual `Glance_*` filenames from a real release asset list
+// before editing, and separately submit/rename the AUR package (a distinct,
+// external action, not something this repo controls).
 function distroCommand(key: DistroKey, version: string): string {
   switch (key) {
     case "arch":
