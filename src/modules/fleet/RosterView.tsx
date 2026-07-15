@@ -1,4 +1,8 @@
-import { Alert02Icon, DashboardCircleIcon } from "@hugeicons/core-free-icons";
+import {
+  Alert02Icon,
+  DashboardCircleIcon,
+  FolderOpenIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect } from "react";
 import {
@@ -8,6 +12,8 @@ import {
   attentionUnits,
   sortUnits,
 } from "./lib/fleetRoster";
+import { getWorktreeOpener, isLoopbackDaemon } from "./lib/worktreeOpener";
+import { useFleetConnection } from "./store/fleetConnectionStore";
 import {
   type RosterConnection,
   useFleetRoster,
@@ -40,10 +46,23 @@ function repoLabel(u: FleetUnit): string {
   return u.branch ? `${repo} · ${u.branch}` : repo;
 }
 
-function UnitRow({ u, reason }: { u: FleetUnit; reason?: string }) {
+function UnitRow({
+  u,
+  reason,
+  canOpen,
+}: {
+  u: FleetUnit;
+  reason?: string;
+  canOpen: boolean;
+}) {
   const cost = fmtCost(u.receipt?.costUsd);
+  const openable = canOpen && !!u.worktree;
+  const openWorktree = () => {
+    if (u.worktree)
+      getWorktreeOpener()?.open({ name: u.name, worktree: u.worktree });
+  };
   return (
-    <div className="flex items-center gap-2.5 rounded-md border border-gray-200/70 bg-white/50 px-2.5 py-1.5 dark:border-gray-800 dark:bg-gray-900/40">
+    <div className="group flex items-center gap-2.5 rounded-md border border-gray-200/70 bg-white/50 px-2.5 py-1.5 dark:border-gray-800 dark:bg-gray-900/40">
       <span
         role="img"
         className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[u.status]}`}
@@ -73,18 +92,32 @@ function UnitRow({ u, reason }: { u: FleetUnit; reason?: string }) {
         <span className="uppercase tracking-wide">{u.status}</span>
         {cost && <span>{cost}</span>}
       </div>
+      {openable && (
+        <button
+          type="button"
+          onClick={openWorktree}
+          title={`Open ${u.worktree} as a Space`}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-gray-400 opacity-0 transition-all hover:bg-gray-100 hover:text-gray-700 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-emerald-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        >
+          <HugeiconsIcon icon={FolderOpenIcon} size={15} />
+        </button>
+      )}
     </div>
   );
 }
 
 export function RosterView() {
   const { units, connection, start, stop } = useFleetRoster();
+  const baseUrl = useFleetConnection((s) => s.baseUrl);
 
   useEffect(() => {
     start();
     return () => stop();
   }, [start, stop]);
 
+  // A worktree path is only openable when the daemon is on this machine (a remote daemon's
+  // worktree lives on another host). Off for a non-loopback daemon — the row hides the button.
+  const canOpen = isLoopbackDaemon(baseUrl);
   const attention = attentionUnits(units);
   const all = sortUnits(units);
   const conn = CONN_LABEL[connection];
@@ -124,7 +157,12 @@ export function RosterView() {
                   Needs you ({attention.length})
                 </div>
                 {attention.map((u) => (
-                  <UnitRow key={u.id} u={u} reason={attentionReason(u)} />
+                  <UnitRow
+                    key={u.id}
+                    u={u}
+                    reason={attentionReason(u)}
+                    canOpen={canOpen}
+                  />
                 ))}
               </section>
             )}
@@ -135,7 +173,7 @@ export function RosterView() {
                 </div>
               )}
               {all.map((u) => (
-                <UnitRow key={u.id} u={u} />
+                <UnitRow key={u.id} u={u} canOpen={canOpen} />
               ))}
             </section>
           </div>

@@ -27,6 +27,8 @@ export interface FleetUnit {
   status: FleetStatus;
   repo: string;
   repoName?: string;
+  /** Absolute path of the unit's git worktree — the target of the "open worktree" gesture (C06). */
+  worktree?: string;
   branch?: string;
   harness?: string;
   startedAt?: number;
