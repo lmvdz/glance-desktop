@@ -8,6 +8,15 @@ This repo is a private fork of [crynta/terax-ai](https://github.com/crynta/terax
 - **Remotes**: `origin` = lmvdz/glance-desktop (private), `upstream` = crynta/terax-ai
 - **License**: Apache-2.0 (upstream's license is retained; see LICENSE)
 
+## Rebrand (C02, rebrand-lite — 2026-07-14)
+
+Presents as **Glance** without the deep rename (deferred to Epic M):
+- `tauri.conf.json`: productName `Glance`, identifier `app.crynta.terax` → **`app.glance.desktop`**, window title `Glance`.
+- `package.json` name → `glance-desktop`; app icons regenerated from the glance mark (`webapp/src/assets/logo-mark.png`, ember `#F0A35A`) via `tauri icon`.
+- Load-bearing name surfaces: `useWindowTitle.ts` `APP_NAME` (the dynamic title bar) and `AboutSection` (displayed name + identifier).
+- **Deliberately NOT renamed** (deep rename, Epic M): the Rust crate (`Cargo.toml` still `terax`), the in-app AI-assistant name ("Ask Terax", agent labels), theme ids, and internal store filenames (`terax-spaces.json`). These are internal or feature-scoped, not the app shell.
+- **Identifier re-home**: changing the identifier moves the tauri-plugin-store data dir, so a user's existing terax Spaces/settings do NOT carry over — intended (clean separation from a real terax install).
+
 ## Discipline: additive-only
 
 Until the fleet module is the primary surface (meta-plan Epic M decides hard divergence), every change here must be additive:
