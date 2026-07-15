@@ -1,0 +1,60 @@
+name: Upstream drift
+
+# Forecasts the cost of rebasing this fork onto crynta/terax-ai and keeps a single
+# living "upstream drift" issue up to date. Weekly + on-demand. Never rebases anything —
+# it only reports, so a human (or the fleet-ide loop) rebases deliberately. See UPSTREAM.md.
+
+on:
+  schedule:
+    - cron: "0 15 * * 1" # Mondays 15:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # need full history for merge-base
+
+      - name: Add + fetch upstream
+        run: |
+          git remote add upstream https://github.com/crynta/terax-ai.git || true
+          git fetch -q upstream main
+
+      - name: Compute drift report
+        id: drift
+        run: |
+          # The script exits 1 when a hand-rebase is warranted; capture the body either way.
+          SKIP_FETCH=1 scripts/upstream-drift.sh --markdown > /tmp/drift.md || true
+          {
+            echo "body<<DRIFT_EOF"
+            cat /tmp/drift.md
+            echo "DRIFT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upsert the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ steps.drift.outputs.body }}
+        run: |
+          # One living issue, found by its label. Update it if it exists; else open it.
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --label upstream-drift --state open \
+                  --json number --jq '.[0].number // empty')
+          gh label create upstream-drift --repo "$GITHUB_REPOSITORY" --color F0A35A \
+            --description "Rebase-drift tracker" 2>/dev/null || true
+          if [ -n "$NUM" ]; then
+            gh issue edit "$NUM" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "Refreshed by the weekly drift check ($(date -u +%Y-%m-%d))."
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label upstream-drift \
+              --title "Upstream drift tracker" --body "$BODY"
+          fi
