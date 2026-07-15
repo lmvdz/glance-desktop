@@ -3,6 +3,8 @@
 // which isn't a global store — so App registers a handler here on mount and RosterView calls it,
 // mirroring the lsp module's setLspNavigator singleton. Absent handler = a no-op (nothing mounted).
 
+import type { DaemonConnection } from "./fleetConfig";
+
 export interface WorktreeTarget {
   /** Display name for the new Space. */
   name: string;
@@ -53,4 +55,18 @@ export function isLoopbackDaemon(baseUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a given UNIT's worktree can be opened locally (M02) — its OWN daemon connection must
+ * be loopback, regardless of what the currently-active daemon is. A unit surfaced from a remote
+ * daemon in the merged roster can't be opened just because the active daemon happens to be local.
+ * Unknown/removed daemon id ⇒ not openable (fail closed).
+ */
+export function canOpenUnitWorktree(
+  connections: ReadonlyArray<Pick<DaemonConnection, "id" | "baseUrl">>,
+  daemonId: string,
+): boolean {
+  const conn = connections.find((c) => c.id === daemonId);
+  return conn ? isLoopbackDaemon(conn.baseUrl) : false;
 }

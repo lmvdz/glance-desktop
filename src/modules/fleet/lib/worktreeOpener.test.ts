@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isLoopbackDaemon, resolveOpenAction } from "./worktreeOpener";
+import {
+  canOpenUnitWorktree,
+  isLoopbackDaemon,
+  resolveOpenAction,
+} from "./worktreeOpener";
 
 describe("resolveOpenAction — create-or-focus (no duplicate Spaces)", () => {
   const spaces = [
@@ -45,5 +49,24 @@ describe("isLoopbackDaemon — worktree openable only for a local daemon", () =>
   it("is false for an unparseable URL", () => {
     expect(isLoopbackDaemon("")).toBe(false);
     expect(isLoopbackDaemon("not a url")).toBe(false);
+  });
+});
+
+describe("canOpenUnitWorktree — gated by the UNIT's own daemon, not the active one (M02)", () => {
+  const connections = [
+    { id: "laptop", baseUrl: "http://127.0.0.1:7878" },
+    { id: "workstation", baseUrl: "https://fleet.example.com" },
+  ];
+
+  it("is true when the unit's daemon is loopback", () => {
+    expect(canOpenUnitWorktree(connections, "laptop")).toBe(true);
+  });
+
+  it("is false when the unit's daemon is remote, even if another daemon is loopback", () => {
+    expect(canOpenUnitWorktree(connections, "workstation")).toBe(false);
+  });
+
+  it("fails closed for an unknown/removed daemon id", () => {
+    expect(canOpenUnitWorktree(connections, "gone")).toBe(false);
   });
 });

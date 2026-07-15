@@ -6,6 +6,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import type { AttentionAlert } from "./fleetAttention";
+import { unitKey } from "./fleetRoster";
 import { useFleetSelection } from "../store/fleetSelectionStore";
 
 // Native OS notification for a unit that needs a human (C08). Firing is reliable; the
@@ -29,11 +30,17 @@ async function ensureActionListener(): Promise<void> {
   actionRegistered = true;
   try {
     await onAction((n) => {
-      const unitId = (n.extra as { unitId?: string } | undefined)?.unitId;
+      const extra = n.extra as
+        | { unitId?: string; daemonId?: string }
+        | undefined;
       void getCurrentWindow()
         .setFocus()
         .catch(() => {});
-      if (unitId) useFleetSelection.getState().select(unitId);
+      if (extra?.unitId && extra.daemonId) {
+        useFleetSelection
+          .getState()
+          .select(unitKey({ daemonId: extra.daemonId, id: extra.unitId }));
+      }
     });
   } catch {
     // onAction unsupported on this platform — the notification still fires; only click-routing is lost.
@@ -41,9 +48,10 @@ async function ensureActionListener(): Promise<void> {
   }
 }
 
-/** Fire one attention alert. The unit id rides in `extra` so a click can focus that exact unit.
- *  Re-alert suppression is handled upstream by the collapse set in the roster store, so a unit
- *  that stays blocked never fires twice. */
+/** Fire one attention alert. The unit id + its source daemon id both ride in `extra` so a click
+ *  can focus that exact unit even when its id collides with a same-id unit on another daemon
+ *  (M02). Re-alert suppression is handled upstream by the collapse set in the roster store, so a
+ *  unit that stays blocked never fires twice. */
 export async function notifyAttention(alert: AttentionAlert): Promise<void> {
   try {
     if (!(await ensurePermission())) return;
@@ -51,7 +59,7 @@ export async function notifyAttention(alert: AttentionAlert): Promise<void> {
     sendNotification({
       title: alert.title,
       body: alert.body,
-      extra: { unitId: alert.unitId },
+      extra: { unitId: alert.unitId, daemonId: alert.daemonId },
     });
   } catch (e) {
     console.warn("[glance] fleet notification failed:", e);

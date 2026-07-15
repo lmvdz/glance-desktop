@@ -3,7 +3,7 @@ import type { FleetStatus, FleetUnit } from "./fleetRoster";
 import { diffLineKind, normalizeDiff, whyStopped } from "./fleetIntervene";
 
 function unit(over: Partial<FleetUnit> & { status: FleetStatus }): FleetUnit {
-  return { id: "1", name: "u", repo: "/r", ...over };
+  return { id: "1", name: "u", repo: "/r", daemonId: "d1", ...over };
 }
 
 describe("diffLineKind — unified-diff colorization", () => {

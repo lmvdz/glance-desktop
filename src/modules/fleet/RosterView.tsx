@@ -12,9 +12,14 @@ import {
   attentionReason,
   attentionUnits,
   sortUnits,
+  unitKey,
 } from "./lib/fleetRoster";
 import { AdoptableSessions } from "./AdoptableSessions";
-import { getWorktreeOpener, isLoopbackDaemon } from "./lib/worktreeOpener";
+import {
+  canOpenUnitWorktree,
+  getWorktreeOpener,
+  isLoopbackDaemon,
+} from "./lib/worktreeOpener";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import {
   type RosterConnection,
@@ -53,12 +58,16 @@ function UnitRow({
   u,
   reason,
   canOpen,
+  showHost,
   onSelect,
 }: {
   u: FleetUnit;
   reason?: string;
   canOpen: boolean;
-  onSelect: (id: string) => void;
+  /** Show this unit's daemon/host badge — off when only one daemon is connected (nothing to
+   *  disambiguate, avoids row clutter). */
+  showHost: boolean;
+  onSelect: (key: string) => void;
 }) {
   const cost = fmtCost(u.receipt?.costUsd);
   const openable = canOpen && !!u.worktree;
@@ -68,7 +77,7 @@ function UnitRow({
     <div className="group flex items-center gap-1 rounded-md border border-gray-200/70 bg-white/50 pr-1.5 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-gray-700 dark:hover:bg-gray-900/70">
       <button
         type="button"
-        onClick={() => onSelect(u.id)}
+        onClick={() => onSelect(unitKey(u))}
         title={`Open ${u.name} — why it stopped, its diff, and steer it`}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left focus-visible:ring-2 focus-visible:ring-emerald-500"
       >
@@ -82,6 +91,14 @@ function UnitRow({
             <span className="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100">
               {u.name}
             </span>
+            {showHost && (
+              <span
+                className="shrink-0 rounded-full border border-sky-200 bg-sky-50 px-1.5 text-[10px] text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300"
+                title={`Daemon: ${u.daemonLabel ?? u.daemonId}`}
+              >
+                {u.daemonLabel ?? u.daemonId}
+              </span>
+            )}
             {u.harness && (
               <span className="shrink-0 rounded-full border border-gray-200 px-1.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
                 {u.harness}
@@ -122,7 +139,12 @@ function UnitRow({
 export function RosterView() {
   const { units, connection, start, stop } = useFleetRoster();
   const baseUrl = useFleetConnection((s) => s.baseUrl);
+  // Every configured daemon connection (M01) — needed to gate "open worktree" per UNIT (its own
+  // daemon must be loopback) rather than by whichever daemon happens to be active.
+  const connections = useFleetConnection((s) => s.connections);
   // Selection lives in a store (not local state) so a notification click (C08) can focus a unit.
+  // `selectedId` holds a roster `unitKey` (daemonId:id), disambiguating same-id units across
+  // daemons (M02).
   const selectedId = useFleetSelection((s) => s.selectedId);
   const select = useFleetSelection((s) => s.select);
 
@@ -131,15 +153,17 @@ export function RosterView() {
     return () => stop();
   }, [start, stop]);
 
-  // A worktree path is only openable when the daemon is on this machine (a remote daemon's
-  // worktree lives on another host). Off for a non-loopback daemon — the row hides the button.
-  const canOpen = isLoopbackDaemon(baseUrl);
+  // AdoptableSessions polls the ACTIVE daemon's presence list directly (not the merged roster),
+  // so its own worktree-open gate stays keyed off the active connection.
+  const canOpenActive = isLoopbackDaemon(baseUrl);
+  // Host badges earn their row space only once there's something to disambiguate.
+  const showHost = connections.length > 1;
 
   // Selecting a unit swaps the list for its intervene detail. The live roster keeps polling in
   // the background; when the selected unit vanishes (landed/removed) and the roster has loaded,
   // drop back to the list.
   const selected = selectedId
-    ? units.find((u) => u.id === selectedId)
+    ? units.find((u) => unitKey(u) === selectedId)
     : undefined;
   useEffect(() => {
     if (selectedId && !selected && units.length > 0) select(null);
@@ -148,7 +172,7 @@ export function RosterView() {
     return (
       <IntervenePane
         unit={selected}
-        canOpen={canOpen}
+        canOpen={canOpenUnitWorktree(connections, selected.daemonId)}
         onBack={() => select(null)}
       />
     );
@@ -178,7 +202,7 @@ export function RosterView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         <div className="mb-4">
-          <AdoptableSessions canOpen={canOpen} />
+          <AdoptableSessions canOpen={canOpenActive} />
         </div>
         {units.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-sm text-gray-400 dark:text-gray-500">
@@ -196,10 +220,11 @@ export function RosterView() {
                 </div>
                 {attention.map((u) => (
                   <UnitRow
-                    key={u.id}
+                    key={unitKey(u)}
                     u={u}
                     reason={attentionReason(u)}
-                    canOpen={canOpen}
+                    canOpen={canOpenUnitWorktree(connections, u.daemonId)}
+                    showHost={showHost}
                     onSelect={select}
                   />
                 ))}
@@ -212,7 +237,13 @@ export function RosterView() {
                 </div>
               )}
               {all.map((u) => (
-                <UnitRow key={u.id} u={u} canOpen={canOpen} onSelect={select} />
+                <UnitRow
+                  key={unitKey(u)}
+                  u={u}
+                  canOpen={canOpenUnitWorktree(connections, u.daemonId)}
+                  showHost={showHost}
+                  onSelect={select}
+                />
               ))}
             </section>
           </div>
