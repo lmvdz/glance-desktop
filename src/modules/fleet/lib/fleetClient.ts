@@ -68,6 +68,22 @@ export class FleetClient {
     return res.json();
   }
 
+  /** A unit's transcript — GET /api/agents/:id/transcript[?since=seq]. With `since`, only the
+   *  delta (entries newer than that seq) is returned (I01); the conversation pane polls it. */
+  async transcript(
+    id: string,
+    since?: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const q = since !== undefined ? `?since=${since}` : "";
+    const res = await this.get(
+      `/api/agents/${encodeURIComponent(id)}/transcript${q}`,
+      signal,
+    );
+    if (!res.ok) throw new Error(`transcript fetch failed: ${res.status}`);
+    return res.json();
+  }
+
   /** File leases for a repo — GET /api/leases?repo → LeaseEntry[] (who holds which file). The
    *  overlay (I04) reads these; repo-level GET /api/presence lands with I05 when the human's own
    *  presence write matters. */
