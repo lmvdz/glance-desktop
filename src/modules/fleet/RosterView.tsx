@@ -4,7 +4,8 @@ import {
   FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { IntervenePane } from "./IntervenePane";
 import {
   type FleetStatus,
   type FleetUnit,
@@ -50,52 +51,62 @@ function UnitRow({
   u,
   reason,
   canOpen,
+  onSelect,
 }: {
   u: FleetUnit;
   reason?: string;
   canOpen: boolean;
+  onSelect: (id: string) => void;
 }) {
   const cost = fmtCost(u.receipt?.costUsd);
   const openable = canOpen && !!u.worktree;
-  const openWorktree = () => {
-    if (u.worktree)
-      getWorktreeOpener()?.open({ name: u.name, worktree: u.worktree });
-  };
+  // The selectable area is a real <button> (opens the detail pane); the folder button sits
+  // beside it as a sibling — no nested interactive elements, so both stay valid + accessible.
   return (
-    <div className="group flex items-center gap-2.5 rounded-md border border-gray-200/70 bg-white/50 px-2.5 py-1.5 dark:border-gray-800 dark:bg-gray-900/40">
-      <span
-        role="img"
-        className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[u.status]}`}
-        aria-label={u.status}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100">
-            {u.name}
+    <div className="group flex items-center gap-1 rounded-md border border-gray-200/70 bg-white/50 pr-1.5 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-gray-700 dark:hover:bg-gray-900/70">
+      <button
+        type="button"
+        onClick={() => onSelect(u.id)}
+        title={`Open ${u.name} — why it stopped, its diff, and steer it`}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left focus-visible:ring-2 focus-visible:ring-emerald-500"
+      >
+        <span
+          role="img"
+          className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[u.status]}`}
+          aria-label={u.status}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100">
+              {u.name}
+            </span>
+            {u.harness && (
+              <span className="shrink-0 rounded-full border border-gray-200 px-1.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                {u.harness}
+              </span>
+            )}
+          </div>
+          <span className="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">
+            {repoLabel(u)}
           </span>
-          {u.harness && (
-            <span className="shrink-0 rounded-full border border-gray-200 px-1.5 text-[10px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              {u.harness}
+          {reason && (
+            <span className="truncate text-[11px] text-amber-600 dark:text-amber-400">
+              {reason}
             </span>
           )}
         </div>
-        <span className="truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">
-          {repoLabel(u)}
-        </span>
-        {reason && (
-          <span className="truncate text-[11px] text-amber-600 dark:text-amber-400">
-            {reason}
-          </span>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-col items-end text-[11px] text-gray-400 dark:text-gray-500">
-        <span className="uppercase tracking-wide">{u.status}</span>
-        {cost && <span>{cost}</span>}
-      </div>
+        <div className="flex shrink-0 flex-col items-end text-[11px] text-gray-400 dark:text-gray-500">
+          <span className="uppercase tracking-wide">{u.status}</span>
+          {cost && <span>{cost}</span>}
+        </div>
+      </button>
       {openable && (
         <button
           type="button"
-          onClick={openWorktree}
+          onClick={() =>
+            u.worktree &&
+            getWorktreeOpener()?.open({ name: u.name, worktree: u.worktree })
+          }
           title={`Open ${u.worktree} as a Space`}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-gray-400 opacity-0 transition-all hover:bg-gray-100 hover:text-gray-700 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-emerald-500 group-hover:opacity-100 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
         >
@@ -109,6 +120,7 @@ function UnitRow({
 export function RosterView() {
   const { units, connection, start, stop } = useFleetRoster();
   const baseUrl = useFleetConnection((s) => s.baseUrl);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     start();
@@ -118,6 +130,25 @@ export function RosterView() {
   // A worktree path is only openable when the daemon is on this machine (a remote daemon's
   // worktree lives on another host). Off for a non-loopback daemon — the row hides the button.
   const canOpen = isLoopbackDaemon(baseUrl);
+
+  // Selecting a unit swaps the list for its intervene detail. The live roster keeps polling in
+  // the background; when the selected unit vanishes (landed/removed) and the roster has loaded,
+  // drop back to the list.
+  const selected = selectedId
+    ? units.find((u) => u.id === selectedId)
+    : undefined;
+  useEffect(() => {
+    if (selectedId && !selected && units.length > 0) setSelectedId(null);
+  }, [selectedId, selected, units.length]);
+  if (selected) {
+    return (
+      <IntervenePane
+        unit={selected}
+        canOpen={canOpen}
+        onBack={() => setSelectedId(null)}
+      />
+    );
+  }
   const attention = attentionUnits(units);
   const all = sortUnits(units);
   const conn = CONN_LABEL[connection];
@@ -162,6 +193,7 @@ export function RosterView() {
                     u={u}
                     reason={attentionReason(u)}
                     canOpen={canOpen}
+                    onSelect={setSelectedId}
                   />
                 ))}
               </section>
@@ -173,7 +205,12 @@ export function RosterView() {
                 </div>
               )}
               {all.map((u) => (
-                <UnitRow key={u.id} u={u} canOpen={canOpen} />
+                <UnitRow
+                  key={u.id}
+                  u={u}
+                  canOpen={canOpen}
+                  onSelect={setSelectedId}
+                />
               ))}
             </section>
           </div>

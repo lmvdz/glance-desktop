@@ -58,6 +58,39 @@ export class FleetClient {
     return res.json();
   }
 
+  /** Unified diff per changed file in a unit's worktree — GET /api/agents/:id/diff → FileDiff[]. */
+  async diff(id: string, signal?: AbortSignal): Promise<unknown> {
+    const res = await this.get(
+      `/api/agents/${encodeURIComponent(id)}/diff`,
+      signal,
+    );
+    if (!res.ok) throw new Error(`diff fetch failed: ${res.status}`);
+    return res.json();
+  }
+
+  /**
+   * Steer a unit — POST /api/command {type:"prompt"}, the same shape the webapp sends. This is
+   * an operator-tier WRITE (it spends model tokens and drives the agent), so it needs a token
+   * when the daemon has auth configured. Returns the daemon's response text on failure.
+   */
+  async steer(
+    id: string,
+    message: string,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; detail?: string }> {
+    const res = await fetch(`${this.config.baseUrl}/api/command`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ type: "prompt", id, message }),
+      signal,
+    });
+    if (res.ok) return { ok: true };
+    return {
+      ok: false,
+      detail: `${res.status}: ${await res.text().catch(() => "steer failed")}`,
+    };
+  }
+
   /**
    * Probe reachability + auth in one call. `/api/auth/check` is viewer-tier on the daemon,
    * so it answers 200 when the token is accepted, 401/403 when it isn't, and throws (network)
