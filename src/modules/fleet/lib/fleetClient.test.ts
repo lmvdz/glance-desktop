@@ -1,0 +1,80 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FleetClient, normalizeBaseUrl } from "./fleetClient";
+
+describe("normalizeBaseUrl", () => {
+  it("defaults the scheme to http and strips trailing slashes", () => {
+    expect(normalizeBaseUrl("127.0.0.1:7878")).toBe("http://127.0.0.1:7878");
+    expect(normalizeBaseUrl("http://localhost:7878/")).toBe(
+      "http://localhost:7878",
+    );
+    expect(normalizeBaseUrl("https://fleet.example.com//")).toBe(
+      "https://fleet.example.com",
+    );
+    expect(normalizeBaseUrl("  ")).toBe("");
+  });
+});
+
+describe("FleetClient.health", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const client = (token?: string) =>
+    new FleetClient({ baseUrl: "http://127.0.0.1:7878", token });
+
+  it("maps 200 → connected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ok", { status: 200 })),
+    );
+    expect((await client("t").health()).status).toBe("connected");
+  });
+
+  it("maps 401/403 → unauthorized (a token problem, not a reachability one)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 401 })),
+    );
+    expect((await client("bad").health()).status).toBe("unauthorized");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 403 })),
+    );
+    expect((await client("bad").health()).status).toBe("unauthorized");
+  });
+
+  it("maps a thrown fetch (nothing listening) → unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    const h = await client().health();
+    expect(h.status).toBe("unreachable");
+    expect(h.detail).toContain("Failed to fetch");
+  });
+
+  it("maps an unexpected status → unreachable, not connected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("boom", { status: 500 })),
+    );
+    expect((await client("t").health()).status).toBe("unreachable");
+  });
+
+  it("sends a bearer header only when a token is present", async () => {
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    await client("secret").health();
+    expect(spy.mock.calls[0][1]?.headers).toMatchObject({
+      authorization: "Bearer secret",
+    });
+
+    spy.mockClear();
+    await client().health();
+    const headers = spy.mock.calls[0][1]?.headers as Record<string, string>;
+    expect(headers.authorization).toBeUndefined();
+  });
+});

@@ -5,6 +5,7 @@ import {
 } from "@/modules/terminal/lib/panes";
 import type {
   EditorTab,
+  FleetTab,
   MarkdownTab,
   PreviewTab,
   Tab,
@@ -24,6 +25,7 @@ export type SerializedTab =
     }
   | { kind: "editor"; path: string }
   | { kind: "preview"; url: string }
+  | { kind: "fleet" }
   | { kind: "markdown"; path: string };
 
 function basename(path: string): string {
@@ -60,6 +62,7 @@ export function isSerializableTab(tab: Tab): boolean {
       return !tab.private;
     case "editor":
     case "preview":
+    case "fleet":
     case "markdown":
       return true;
     default:
@@ -81,6 +84,8 @@ function serializeTab(tab: Tab): SerializedTab | null {
       return { kind: "editor", path: tab.path };
     case "preview":
       return { kind: "preview", url: tab.url };
+    case "fleet":
+      return { kind: "fleet" };
     case "markdown":
       return { kind: "markdown", path: tab.path };
     default:
@@ -185,6 +190,14 @@ function hydrateTab(
         title: titleFromUrl(s.url),
         url: s.url,
       } satisfies PreviewTab;
+    case "fleet":
+      return {
+        id: allocId(),
+        kind: "fleet",
+        spaceId,
+        cold: true,
+        title: "Fleet",
+      } satisfies FleetTab;
     case "markdown":
       return {
         id: allocId(),
