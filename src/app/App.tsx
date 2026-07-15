@@ -34,6 +34,8 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
+import { setWorktreeOpener } from "@/modules/fleet";
+import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
   Header,
@@ -988,6 +990,30 @@ export default function App() {
     setActive(meta.id);
     return meta.id;
   }, [activeCwd, home, workspaceEnv, newTab, setActiveSpaceForNewTabs]);
+
+  // The fleet→ground gesture (C06): open a unit's worktree as a Space — create-or-FOCUS, so
+  // clicking a unit twice never duplicates its Space. Registered into the fleet module below so
+  // a roster row can invoke it without prop-drilling through the pane stack.
+  const handleOpenWorktree = useCallback(
+    ({ name, worktree }: { name: string; worktree: string }) => {
+      const { spaces, create, setActive } = useSpaces.getState();
+      const action = resolveOpenAction(spaces, worktree);
+      if (action.kind === "focus") {
+        setActive(action.id);
+        return;
+      }
+      const meta = create({ name, root: worktree, env: workspaceEnv });
+      setActiveSpaceForNewTabs(meta.id);
+      newTab(worktree);
+      setActive(meta.id);
+    },
+    [workspaceEnv, newTab, setActiveSpaceForNewTabs],
+  );
+
+  useEffect(() => {
+    setWorktreeOpener({ open: handleOpenWorktree });
+    return () => setWorktreeOpener(null);
+  }, [handleOpenWorktree]);
 
   const handleDeleteSpace = useCallback(
     (id: string) => {

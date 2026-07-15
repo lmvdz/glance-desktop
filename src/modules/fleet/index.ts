@@ -7,3 +7,4 @@ export {
   normalizeBaseUrl,
 } from "./lib/fleetClient";
 export type { FleetUnit } from "./lib/fleetRoster";
+export { setWorktreeOpener } from "./lib/worktreeOpener";
