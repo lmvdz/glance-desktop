@@ -28,10 +28,26 @@ Until the fleet module is the primary surface (meta-plan Epic M decides hard div
 
 ## Rebase runbook
 
-1. `git fetch upstream && scripts/upstream-drift.sh` (C03 adds this) — read the conflict forecast before rebasing.
-2. `git rebase upstream/main` on a branch, never directly on main; fix conflicts (should be confined to registration points if the discipline held).
-3. Run the full gate (below), then fast-forward main via PR.
-4. If a rebase costs more than a day: record why here. Two such events → bring the hard-divergence decision to Lars.
+**Never rebase blind — read the forecast first.** `scripts/upstream-drift.sh` (it fetches `upstream` itself) prints how far behind we are and the CONFLICT FORECAST: the exact files a rebase will make you resolve by hand (the set both we and upstream changed since the common base). It also flags when upstream touched a fleet-module **registration point** (`App.tsx`, `WorkspaceSurface.tsx`, `command-palette/commands.ts`, `spaces/serialize.ts`, `tabs/{index,lib/useTabs,lib/tabLabel}`, `settings/*`) — the additive seams most likely to collide. Exit 0 = clean; exit 1 = conflicts likely. A weekly Action (`.github/workflows/upstream-drift.yml`) runs it and keeps one living **"Upstream drift tracker"** issue current; run it on demand from the Actions tab (`workflow_dispatch`).
+
+Reading the forecast:
+- **0 conflict files** → a rebase is mechanical; just do it.
+- **conflicts only in registration points** → expected; each is a small additive insertion (a tab-kind, a palette item, a serialize case) that upstream reordered around. Re-apply ours below theirs.
+- **conflicts in `src/modules/fleet/` neighbors or many files** → the additive discipline slipped, or upstream refactored a seam. Slow down.
+
+Steps:
+1. `scripts/upstream-drift.sh` — read the forecast. If it says UP TO DATE, stop.
+2. `git checkout -b rebase/YYYY-MM-DD && git rebase upstream/main` — on a branch, **never directly on `main`**.
+3. Resolve conflicts (should be confined to the registration points if the discipline held). `git rebase --continue`.
+4. Run the full gate (below): `pnpm lint && pnpm check-types && pnpm vitest run && pnpm build && (cd src-tauri && cargo check)`.
+5. Fast-forward `main` via PR.
+
+Escape hatch:
+- If a rebase costs **more than a day**, record why in a dated line here. **Two** such events → bring the hard-divergence decision to Lars (per the meta-plan: once the fleet module is the primary surface, hard divergence is acceptable).
+
+## Inherited upstream workflows (not yet triaged — Lars's call)
+
+The clone brought terax's `.github/workflows/`: `ci.yml` (runs on push/PR — currently GREEN on our branches, a useful independent gate), plus `release.yml`, `signpath-test.yml`, `update-nix-sources.yml` (release/code-signing/nix — terax-specific, trigger on tags/releases we don't cut). They are dormant until we tag a release. Pruning or adapting them is a deliberate cleanup, not part of C03.
 
 ## Build on this machine (WSL2 Ubuntu)
 
