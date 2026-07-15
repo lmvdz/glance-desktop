@@ -3,7 +3,9 @@ import {
   ArrowLeft02Icon,
   ArrowRight01Icon,
   FolderOpenIcon,
+  Logout03Icon,
   SentIcon,
+  UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +18,14 @@ import {
   whyStopped,
 } from "./lib/fleetIntervene";
 import type { FleetUnit } from "./lib/fleetRoster";
+import {
+  IDLE_TAKEOVER,
+  type TakeoverState,
+  canHandBack,
+  canTakeOver,
+  cockpitAgentLabel,
+  resumePrompt,
+} from "./lib/fleetTakeover";
 import { getWorktreeOpener } from "./lib/worktreeOpener";
 import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
@@ -69,6 +79,9 @@ export function IntervenePane({
   const [steering, setSteering] = useState(false);
   const [steerErr, setSteerErr] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  // A stable session id for THIS intervene pane, so the human's presence claim attributes here.
+  const sessionId = useRef<string>(crypto.randomUUID()).current;
+  const [takeover, setTakeover] = useState<TakeoverState>(IDLE_TAKEOVER);
 
   const entries = useFleetTranscript((s) => s.entries);
   const startTranscript = useFleetTranscript((s) => s.start);
@@ -121,6 +134,66 @@ export function IntervenePane({
     }
   };
 
+  // Take over: quiesce the agent and mark the human as driving — interrupt the current turn, set
+  // the unit to observe, and claim presence in the worktree. Composed from existing primitives (no
+  // daemon takeover primitive; a half-applied takeover surfaces its error and stays recoverable).
+  const takeOver = async () => {
+    if (!canTakeOver(takeover) || !unit.worktree) return;
+    const priorMode = unit.autonomyMode ?? "assist";
+    setTakeover({
+      phase: "taking-over",
+      priorMode,
+      presenceId: null,
+      error: null,
+    });
+    try {
+      const c = await client();
+      await c.interrupt(unit.id);
+      await c.setMode(unit.id, "observe", "human took over from the cockpit");
+      const presenceId = await c.claimPresence(
+        unit.worktree,
+        cockpitAgentLabel(sessionId),
+      );
+      setTakeover({ phase: "active", priorMode, presenceId, error: null });
+    } catch (e) {
+      setTakeover({
+        phase: "idle",
+        priorMode: null,
+        presenceId: null,
+        error: e instanceof Error ? e.message : "take over failed",
+      });
+    }
+  };
+
+  // Hand back: restore the prior mode, release the human's presence, and resume the agent with a
+  // prompt naming the files edited so its next turn re-reads the tree deliberately.
+  const handBack = async () => {
+    if (!canHandBack(takeover)) return;
+    const { priorMode, presenceId } = takeover;
+    setTakeover({ ...takeover, phase: "handing-back", error: null });
+    try {
+      const c = await client();
+      await c.setMode(
+        unit.id,
+        priorMode ?? "assist",
+        "human handed back from the cockpit",
+      );
+      if (presenceId && unit.worktree)
+        await c.releasePresence(presenceId, unit.worktree);
+      await c.steer(unit.id, resumePrompt((diff ?? []).map((d) => d.file)));
+      setTakeover(IDLE_TAKEOVER);
+    } catch (e) {
+      setTakeover({
+        ...takeover,
+        phase: "active",
+        error: e instanceof Error ? e.message : "hand back failed",
+      });
+    }
+  };
+
+  const driving =
+    takeover.phase === "active" || takeover.phase === "handing-back";
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <header className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
@@ -138,24 +211,67 @@ export function IntervenePane({
         <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
           {unit.status}
         </span>
-        {canOpen && unit.worktree && (
-          <button
-            type="button"
-            onClick={() =>
-              unit.worktree &&
-              getWorktreeOpener()?.open({
-                name: unit.name,
-                worktree: unit.worktree,
-              })
-            }
-            title={`Open ${unit.worktree} as a Space`}
-            className="ml-auto flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            <HugeiconsIcon icon={FolderOpenIcon} size={13} />
-            Open worktree
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          {unit.worktree &&
+            (driving ? (
+              <button
+                type="button"
+                onClick={() => void handBack()}
+                disabled={takeover.phase === "handing-back"}
+                title="Restore the unit's mode and resume it with your changes"
+                className="flex h-7 items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
+                <HugeiconsIcon icon={Logout03Icon} size={13} />
+                {takeover.phase === "handing-back"
+                  ? "Handing back…"
+                  : "Hand back"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void takeOver()}
+                disabled={takeover.phase === "taking-over"}
+                title="Pause the agent and drive this worktree yourself"
+                className="flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <HugeiconsIcon icon={UserSharingIcon} size={13} />
+                {takeover.phase === "taking-over"
+                  ? "Taking over…"
+                  : "Take over"}
+              </button>
+            ))}
+          {canOpen && unit.worktree && (
+            <button
+              type="button"
+              onClick={() =>
+                unit.worktree &&
+                getWorktreeOpener()?.open({
+                  name: unit.name,
+                  worktree: unit.worktree,
+                })
+              }
+              title={`Open ${unit.worktree} as a Space`}
+              className="flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              <HugeiconsIcon icon={FolderOpenIcon} size={13} />
+              Open worktree
+            </button>
+          )}
+        </div>
       </header>
+
+      {driving && (
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+          <HugeiconsIcon icon={UserSharingIcon} size={13} />
+          You're driving — the agent is paused (observe). Edit in the worktree,
+          then hand back to resume it.
+        </div>
+      )}
+      {takeover.error && (
+        <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+          {takeover.error}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {/* Why-stopped — the first thing you want when a unit needs you. */}

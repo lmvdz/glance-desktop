@@ -31,6 +31,9 @@ export interface FleetUnit {
   worktree?: string;
   branch?: string;
   harness?: string;
+  /** Requested autonomy mode (observe/assist/autodrive) — captured before "Take over" so
+   *  "Hand back" can restore it (I05). */
+  autonomyMode?: string;
   startedAt?: number;
   contextPct?: number;
   receipt?: FleetReceipt;

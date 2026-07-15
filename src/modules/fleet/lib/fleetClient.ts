@@ -96,6 +96,75 @@ export class FleetClient {
     return res.json();
   }
 
+  /** Interrupt a unit's current turn — POST /api/command {type:"interrupt"} → ACP session/cancel.
+   *  Used by "Take over" (I05) to quiesce the agent so the human drives. */
+  async interrupt(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; detail?: string }> {
+    const res = await fetch(`${this.config.baseUrl}/api/command`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ type: "interrupt", id }),
+      signal,
+    });
+    return res.ok ? { ok: true } : { ok: false, detail: `${res.status}` };
+  }
+
+  /** Set a unit's autonomy mode — POST /api/agents/:id/mode {mode}. "Take over" → observe;
+   *  "Hand back" restores the prior mode (I05). */
+  async setMode(
+    id: string,
+    mode: string,
+    reason?: string,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; detail?: string }> {
+    const res = await fetch(
+      `${this.config.baseUrl}/api/agents/${encodeURIComponent(id)}/mode`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ mode, reason }),
+        signal,
+      },
+    );
+    return res.ok ? { ok: true } : { ok: false, detail: `${res.status}` };
+  }
+
+  /** Claim presence for a worktree (I02's write) — POST /api/presence → { id }. Used by "Take over"
+   *  to register the human as present. Returns the claim id to release on hand-back. */
+  async claimPresence(
+    repo: string,
+    agent: string,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    const res = await fetch(`${this.config.baseUrl}/api/presence`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ repo, agent }),
+      signal,
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { id?: string } | null;
+    return body?.id ?? null;
+  }
+
+  /** Release a presence claim — DELETE /api/presence?id&repo (I02's write). "Hand back" (I05). */
+  async releasePresence(
+    id: string,
+    repo: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await fetch(
+      `${this.config.baseUrl}/api/presence?id=${encodeURIComponent(id)}&repo=${encodeURIComponent(repo)}`,
+      {
+        method: "DELETE",
+        headers: this.headers(),
+        signal,
+      },
+    ).catch(() => {});
+  }
+
   /**
    * Steer a unit — POST /api/command {type:"prompt"}, the same shape the webapp sends. This is
    * an operator-tier WRITE (it spends model tokens and drives the agent), so it needs a token
