@@ -9,11 +9,15 @@ import { BUILTIN_AGENTS } from "../lib/agents";
 import { useAgentsStore } from "./agentsStore";
 import { usePlanStore } from "./planStore";
 import { createContextAwareTransport } from "../lib/transport";
+import { createDaemonChatTransport } from "../lib/daemonTransport";
 import type { ToolContext } from "../tools/tools";
+import { useFleetConnection } from "@/modules/fleet/store/fleetConnectionStore";
 import {
   chats,
   getActiveProviderKey,
+  getDaemonUnitId,
   seedMessages,
+  setDaemonUnitId,
   touchChat,
   useChatStore,
 } from "./chatStore";
@@ -37,7 +41,7 @@ function makeChat(sessionId: string): Chat<UIMessage> {
     getSessionId: () => sessionId,
   };
 
-  const transport = createContextAwareTransport({
+  const localTransport = createContextAwareTransport({
     getKeys: () => useChatStore.getState().apiKeys,
     toolContext,
     getModelId: () => useChatStore.getState().selectedModelId,
@@ -99,6 +103,27 @@ function makeChat(sessionId: string): Chat<UIMessage> {
       });
     },
   }) as unknown as ChatTransport<UIMessage>;
+
+  // The daemon-backed alternative (E01): runs the turn against a glance daemon console unit instead
+  // of a BYOK provider. Built once; a routing transport picks between the two per turn by session mode.
+  const daemonTransport = createDaemonChatTransport({
+    getClient: () => useFleetConnection.getState().client(),
+    getRepo: () => useChatStore.getState().live.getWorkspaceRoot(),
+    getUnitId: () => getDaemonUnitId(sessionId),
+    setUnitId: (id) => setDaemonUnitId(sessionId, id),
+  }) as unknown as ChatTransport<UIMessage>;
+
+  // Route each turn by the session's mode, read fresh at send time so a toggle takes effect on the
+  // next turn without rebuilding the Chat. reconnectToStream stays on the local transport (the daemon
+  // transport polls fresh each turn and has nothing to reconnect to).
+  const transport: ChatTransport<UIMessage> = {
+    sendMessages: (opts) =>
+      (useChatStore.getState().sessionMode[sessionId] === "daemon"
+        ? daemonTransport
+        : localTransport
+      ).sendMessages(opts),
+    reconnectToStream: (opts) => localTransport.reconnectToStream(opts),
+  };
 
   const initialMessages = seedMessages.get(sessionId);
   seedMessages.delete(sessionId);

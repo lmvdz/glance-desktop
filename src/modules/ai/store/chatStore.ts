@@ -149,7 +149,15 @@ type StoreState = {
   renameSession: (id: string, title: string) => void;
   /** Persist messages of a session and bump its updatedAt + auto-title. */
   persistMessages: (id: string, messages: UIMessage[]) => void;
+
+  // Chat transport mode per session (E01): "local" = BYOK provider (default), "daemon" = a glance
+  // daemon console unit. The routing transport reads this at send time, so toggling takes effect on
+  // the next turn without rebuilding the Chat. Runtime-only (not persisted) in v1.
+  sessionMode: Record<string, ChatMode>;
+  setSessionMode: (id: string, mode: ChatMode) => void;
 };
+
+export type ChatMode = "local" | "daemon";
 
 const NOOP_LIVE: Live = {
   getCwd: () => null,
@@ -181,6 +189,17 @@ export function touchChat(id: string, c: Chat<UIMessage>) {
 // Initial messages for a session, populated at hydration time and consumed
 // when the matching Chat is constructed.
 export const seedMessages = new Map<string, UIMessage[]>();
+
+// The daemon console unit lazily created for a daemon-mode chat session (E01), keyed by session id.
+// Runtime-only. The daemon transport reads/writes it so every turn reuses the same unit; E02
+// (promote-in-place) reads the active session's unit to promote it.
+const daemonUnitIds = new Map<string, string>();
+export function getDaemonUnitId(sessionId: string): string | null {
+  return daemonUnitIds.get(sessionId) ?? null;
+}
+export function setDaemonUnitId(sessionId: string, unitId: string): void {
+  daemonUnitIds.set(sessionId, unitId);
+}
 
 // Trailing debounce for per-token message persistence. Streaming fires
 // `persistMessages` on every token; without this we'd JSON-serialize the
@@ -283,6 +302,9 @@ export const useChatStore = create<StoreState>((set, get) => ({
   sessionsHydrated: false,
   sessions: [],
   activeSessionId: null,
+  sessionMode: {},
+  setSessionMode: (id, mode) =>
+    set((s) => ({ sessionMode: { ...s.sessionMode, [id]: mode } })),
 
   hydrateSessions: async () => {
     if (get().sessionsHydrated) return;
