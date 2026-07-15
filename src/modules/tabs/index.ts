@@ -14,6 +14,7 @@ export {
   type TerminalTab,
   type EditorTab,
   type PreviewTab,
+  type FleetTab,
   type MarkdownTab,
   type AiDiffTab,
   type GitDiffTab,

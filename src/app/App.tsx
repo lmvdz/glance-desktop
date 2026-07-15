@@ -125,6 +125,7 @@ export default function App() {
     openFileTab,
     pinTab,
     newPreviewTab,
+    newFleetTab,
     newMarkdownTab,
     setMarkdownView,
     setOverrideLanguage,
@@ -638,6 +639,8 @@ export default function App() {
     [newPreviewTab],
   );
 
+  const openFleetTab = useCallback(() => newFleetTab(), [newFleetTab]);
+
   const splitActivePaneInActiveTab = useCallback(
     (dir: "row" | "col") => {
       const t = tabsRef.current.find((x) => x.id === activeId);
@@ -1068,6 +1071,7 @@ export default function App() {
             openNewPrivate: openNewPrivateTab,
             openNewEditor: () => setNewEditorOpen(true),
             openNewPreview: () => openPreviewTab(""),
+            openNewFleet: () => openFleetTab(),
             openGitGraph: openGitGraphFromContext,
             toggleSourceControl,
             closeActiveTabOrPane: handleCloseTabOrPane,
@@ -1098,6 +1102,7 @@ export default function App() {
       openNewBlockTab,
       openNewPrivateTab,
       openPreviewTab,
+      openFleetTab,
       openGitGraphFromContext,
       toggleSourceControl,
       handleCloseTabOrPane,

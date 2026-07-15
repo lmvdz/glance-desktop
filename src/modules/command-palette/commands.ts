@@ -13,6 +13,7 @@ import {
   LayoutTwoRowIcon,
   PaintBoardIcon,
   Search01Icon,
+  ServerStack01Icon,
   Settings01Icon,
   SidebarLeftIcon,
   SourceCodeIcon,
@@ -43,6 +44,7 @@ export type CommandPaletteActionContext = {
   openNewPrivate: () => void;
   openNewEditor: () => void;
   openNewPreview: () => void;
+  openNewFleet: () => void;
   openGitGraph: () => void;
   toggleSourceControl: () => void;
   closeActiveTabOrPane: () => void;
@@ -112,7 +114,14 @@ export function createCommandItems(
       id: "spaces.overview",
       title: "Spaces: Overview",
       group: "Spaces",
-      keywords: ["spaces", "sessions", "overview", "organize", "manage", "move"],
+      keywords: [
+        "spaces",
+        "sessions",
+        "overview",
+        "organize",
+        "manage",
+        "move",
+      ],
       icon: DashboardSquare01Icon,
       run: ctx.openSpacesOverview,
     },
@@ -130,8 +139,7 @@ export function createCommandItems(
       group: "Spaces" as const,
       keywords: ["space", "switch", "session", sp.name],
       icon: DashboardSquare01Icon,
-      disabledReason:
-        sp.id === ctx.activeSpaceId ? "Current space" : undefined,
+      disabledReason: sp.id === ctx.activeSpaceId ? "Current space" : undefined,
       run: () => ctx.switchSpace(sp.id),
     })),
     {
@@ -178,6 +186,14 @@ export function createCommandItems(
       icon: Globe02Icon,
       shortcutId: "tab.newPreview",
       run: ctx.openNewPreview,
+    },
+    {
+      id: "tab.newFleet",
+      title: "New fleet pane",
+      group: "Tabs",
+      keywords: ["fleet", "glance", "daemon", "agents", "squad"],
+      icon: ServerStack01Icon,
+      run: ctx.openNewFleet,
     },
     {
       id: "tab.close",

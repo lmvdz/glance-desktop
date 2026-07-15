@@ -62,6 +62,15 @@ export type PreviewTab = TabBase & {
   url: string;
 };
 
+// A pane onto a glance fleet daemon (fleet-ide-cockpit C04). The connection target lives
+// in module state (fleetConfig/keyring), so the tab itself carries no payload — one fleet
+// pane is like any other; the pane reads the single shared connection store.
+export type FleetTab = TabBase & {
+  id: number;
+  kind: "fleet";
+  title: string;
+};
+
 export type MarkdownTab = TabBase & {
   id: number;
   kind: "markdown";
@@ -118,6 +127,7 @@ export type Tab =
   | TerminalTab
   | EditorTab
   | PreviewTab
+  | FleetTab
   | MarkdownTab
   | AiDiffTab
   | GitDiffTab
@@ -235,7 +245,10 @@ export function planSpaceRemoval(
   let activeId = currentActiveId;
   if (!next.some((t) => t.spaceId === fallbackSpaceId)) {
     const tabId = allocId();
-    next = [...next, coldTerminalTab(tabId, allocId(), fallbackSpaceId, fallbackCwd)];
+    next = [
+      ...next,
+      coldTerminalTab(tabId, allocId(), fallbackSpaceId, fallbackCwd),
+    ];
     activeId = tabId;
   } else if (!next.some((t) => t.id === currentActiveId)) {
     const inFallback = next.filter((t) => t.spaceId === fallbackSpaceId);
@@ -673,6 +686,16 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     return id;
   }, []);
 
+  const newFleetTab = useCallback(() => {
+    const id = nextIdRef.current++;
+    setTabs((t) => [
+      ...t,
+      { id, kind: "fleet", spaceId: activeSpaceIdRef.current, title: "Fleet" },
+    ]);
+    setActiveId(id);
+    return id;
+  }, []);
+
   const newMarkdownTab = useCallback((path: string) => {
     let targetId: number | null = null;
     setTabs((curr) => {
@@ -966,9 +989,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
 
   const selectByIndex = useCallback(
     (idx: number, spaceId?: string) => {
-      const t = spaceId
-        ? pickTabBySpaceIndex(tabs, idx, spaceId)
-        : tabs[idx];
+      const t = spaceId ? pickTabBySpaceIndex(tabs, idx, spaceId) : tabs[idx];
       if (t) setActiveId(t.id);
     },
     [tabs],
@@ -1180,6 +1201,7 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openFileTab,
     pinTab,
     newPreviewTab,
+    newFleetTab,
     newMarkdownTab,
     setMarkdownView,
     openAiDiffTab,

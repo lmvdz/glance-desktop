@@ -2,6 +2,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { AiDiffStack, EditorStack, GitDiffStack } from "@/modules/editor";
 import { GitHistoryStack } from "@/modules/git-history";
+import { FleetStack } from "@/modules/fleet";
 import { MarkdownStack } from "@/modules/markdown";
 import { PreviewStack } from "@/modules/preview";
 import type { Tab } from "@/modules/tabs";
@@ -63,6 +64,7 @@ export function WorkspaceSurface({
   const isTerminalTab = kind === "terminal";
   const isEditorTab = kind === "editor";
   const isPreviewTab = kind === "preview";
+  const isFleetTab = kind === "fleet";
   const isMarkdownTab = kind === "markdown";
   const isAiDiffTab = kind === "ai-diff";
   const isGitDiffTab = kind === "git-diff" || kind === "git-commit-file";
@@ -116,6 +118,15 @@ export function WorkspaceSurface({
           registerHandle={registerPreviewHandle}
           onUrlChange={onPreviewUrlChange}
         />
+      </div>
+      <div
+        className={cn(
+          "absolute inset-0",
+          !isFleetTab && "invisible pointer-events-none",
+        )}
+        aria-hidden={!isFleetTab}
+      >
+        <FleetStack tabs={tabs} activeId={activeId} />
       </div>
       <div
         className={cn(
