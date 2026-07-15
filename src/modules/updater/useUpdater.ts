@@ -8,11 +8,11 @@ import { useCallback, useEffect, useState } from "react";
 const LAST_CHECK_KEY = "glance:updater:last-check";
 const LEGACY_LAST_CHECK_KEY = "terax:updater:last-check";
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-// TODO(M04): repoint to this fork's own release repo once it exists —
-// tracked as the release-recredential-rebrand concern (updater endpoint /
-// pubkey in tauri.conf.json are explicitly out of scope for this rename).
+// Fork's own release repo (M04 release-recredential-rebrand). The Tauri
+// updater plugin endpoint lives in tauri.conf.json's plugins.updater config;
+// keep both in sync if the release repo ever moves again.
 const GITHUB_LATEST_RELEASE =
-  "https://api.github.com/repos/crynta/terax-ai/releases/latest";
+  "https://api.github.com/repos/lmvdz/glance-desktop/releases/latest";
 
 export interface ManualUpdateInfo {
   version: string;
