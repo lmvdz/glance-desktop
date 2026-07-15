@@ -71,6 +71,9 @@ export function IntervenePane({
   onBack: () => void;
   canOpen: boolean;
 }) {
+  // M02: every action below MUST target the UNIT's own daemon, not the currently-active one — a
+  // unit surfaced from a remote daemon in the merged roster is still driven by that daemon even
+  // while a different one is active in the connection switcher.
   const client = useFleetConnection((s) => s.client);
   const [diff, setDiff] = useState<FleetFileDiff[] | null>(null);
   const [diffErr, setDiffErr] = useState<string | null>(null);
@@ -88,11 +91,11 @@ export function IntervenePane({
   const stopTranscript = useFleetTranscript((s) => s.stop);
   const addOptimistic = useFleetTranscript((s) => s.addOptimistic);
 
-  // The unit's live ACP conversation polls while this pane is open.
+  // The unit's live ACP conversation polls while this pane is open — against ITS daemon.
   useEffect(() => {
-    startTranscript(unit.id);
+    startTranscript(unit.id, unit.daemonId);
     return () => stopTranscript();
-  }, [unit.id, startTranscript, stopTranscript]);
+  }, [unit.id, unit.daemonId, startTranscript, stopTranscript]);
 
   useEffect(() => {
     let alive = true;
@@ -100,7 +103,7 @@ export function IntervenePane({
     setDiffErr(null);
     void (async () => {
       try {
-        const raw = await (await client()).diff(unit.id);
+        const raw = await (await client(unit.daemonId)).diff(unit.id);
         if (alive) setDiff(normalizeDiff(raw));
       } catch (e) {
         if (alive)
@@ -110,7 +113,7 @@ export function IntervenePane({
     return () => {
       alive = false;
     };
-  }, [unit.id, client]);
+  }, [unit.id, unit.daemonId, client]);
 
   const why = whyStopped(unit);
 
@@ -125,7 +128,7 @@ export function IntervenePane({
     addOptimistic(message, clientTurnId);
     setSteerText("");
     try {
-      const res = await (await client()).steer(unit.id, message);
+      const res = await (await client(unit.daemonId)).steer(unit.id, message);
       if (!res.ok) setSteerErr(res.detail ?? "steer failed");
     } catch (e) {
       setSteerErr(e instanceof Error ? e.message : "steer failed");
@@ -147,7 +150,7 @@ export function IntervenePane({
       error: null,
     });
     try {
-      const c = await client();
+      const c = await client(unit.daemonId);
       await c.interrupt(unit.id);
       await c.setMode(unit.id, "observe", "human took over from the cockpit");
       const presenceId = await c.claimPresence(
@@ -172,7 +175,7 @@ export function IntervenePane({
     const { priorMode, presenceId } = takeover;
     setTakeover({ ...takeover, phase: "handing-back", error: null });
     try {
-      const c = await client();
+      const c = await client(unit.daemonId);
       await c.setMode(
         unit.id,
         priorMode ?? "assist",
