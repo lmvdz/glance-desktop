@@ -14,6 +14,7 @@ import {
   whyStopped,
 } from "./lib/fleetIntervene";
 import { getWorktreeOpener } from "./lib/worktreeOpener";
+import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 
 const LINE_CLS: Record<DiffLineKind, string> = {
@@ -158,6 +159,9 @@ export function IntervenePane({
             </div>
           )}
         </div>
+
+        {/* Who holds which file in this worktree (I04) — shared-workspace awareness. */}
+        <WorkspaceOverlay repo={unit.repo} />
 
         {/* Diff-as-spine. */}
         <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
