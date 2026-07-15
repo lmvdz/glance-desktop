@@ -9,6 +9,9 @@ export type FleetHealth =
   | { status: "unauthorized"; detail: string }
   | { status: "unreachable"; detail: string };
 
+/** Thrown by roster() on 401/403 so the poller can distinguish auth failure from unreachable. */
+export class FleetAuthError extends Error {}
+
 export interface FleetClientConfig {
   /** e.g. "http://127.0.0.1:7878" — no trailing slash. */
   baseUrl: string;
@@ -39,6 +42,20 @@ export class FleetClient {
       headers: this.headers(),
       signal,
     });
+  }
+
+  /**
+   * Roster snapshot from GET /api/agents. Throws on a transport failure (→ the poller shows
+   * "reconnecting" and keeps the last good roster); throws a tagged error on 401/403 so the
+   * poller can surface "unauthorized" distinctly from "unreachable".
+   */
+  async roster(signal?: AbortSignal): Promise<unknown> {
+    const res = await this.get("/api/agents", signal);
+    if (res.status === 401 || res.status === 403) {
+      throw new FleetAuthError(`daemon refused the token (${res.status})`);
+    }
+    if (!res.ok) throw new Error(`roster fetch failed: ${res.status}`);
+    return res.json();
   }
 
   /**

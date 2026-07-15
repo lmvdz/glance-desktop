@@ -9,6 +9,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect } from "react";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import { RosterView } from "./RosterView";
 import {
   type ConnectionStatus,
   useFleetConnection,
@@ -63,6 +64,10 @@ export function FleetPane({ visible }: { visible: boolean }) {
     if (visible && hydrated) void refresh();
   }, [visible, hydrated, refresh]);
 
+  // Connected → the live roster (C05) takes over the pane. Every other state keeps the
+  // centered connection view below so the operator can see why there's no fleet yet.
+  if (status === "connected") return <RosterView />;
+
   const meta = STATUS_META[status];
 
   return (
@@ -104,12 +109,6 @@ export function FleetPane({ visible }: { visible: boolean }) {
           Fleet settings
         </button>
       </div>
-
-      {status === "connected" && (
-        <div className="text-xs text-gray-400 dark:text-gray-500">
-          The roster lands here next (C05).
-        </div>
-      )}
     </div>
   );
 }
