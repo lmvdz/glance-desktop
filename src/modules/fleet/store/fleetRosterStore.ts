@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { attentionTransitions } from "../lib/fleetAttention";
+import { notifyAttention } from "../lib/fleetBell";
 import { FleetAuthError } from "../lib/fleetClient";
 import { type FleetUnit, normalizeRoster } from "../lib/fleetRoster";
 import { getFleetToken } from "../lib/fleetKeyring";
@@ -32,6 +34,8 @@ type FleetRosterState = {
 let timer: ReturnType<typeof setInterval> | null = null;
 let inFlight: AbortController | null = null;
 let subscribers = 0;
+// Unit ids currently in a notified attention state — the collapse set (module-level, one per app).
+let notifiedAttention: Set<string> = new Set();
 
 async function pollOnce(
   set: (p: Partial<FleetRosterState>) => void,
@@ -47,8 +51,18 @@ async function pollOnce(
     });
     const raw = await client.roster(ctrl.signal);
     if (ctrl.signal.aborted) return;
+    const nextUnits = normalizeRoster(raw);
+    // Fire a native OS notification for each unit that JUST started needing a human (C08). The
+    // collapse set means a unit that stays blocked doesn't re-alert every 2s poll.
+    const { alerts, notified } = attentionTransitions(
+      get().units,
+      nextUnits,
+      notifiedAttention,
+    );
+    notifiedAttention = notified;
+    for (const a of alerts) void notifyAttention(a);
     set({
-      units: normalizeRoster(raw),
+      units: nextUnits,
       connection: "live",
       lastUpdated: Date.now(),
       failures: 0,

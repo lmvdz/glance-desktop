@@ -4,7 +4,7 @@ import {
   FolderOpenIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { IntervenePane } from "./IntervenePane";
 import {
   type FleetStatus,
@@ -19,6 +19,7 @@ import {
   type RosterConnection,
   useFleetRoster,
 } from "./store/fleetRosterStore";
+import { useFleetSelection } from "./store/fleetSelectionStore";
 
 const STATUS_DOT: Record<FleetStatus, string> = {
   input: "bg-red-500",
@@ -120,7 +121,9 @@ function UnitRow({
 export function RosterView() {
   const { units, connection, start, stop } = useFleetRoster();
   const baseUrl = useFleetConnection((s) => s.baseUrl);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selection lives in a store (not local state) so a notification click (C08) can focus a unit.
+  const selectedId = useFleetSelection((s) => s.selectedId);
+  const select = useFleetSelection((s) => s.select);
 
   useEffect(() => {
     start();
@@ -138,14 +141,14 @@ export function RosterView() {
     ? units.find((u) => u.id === selectedId)
     : undefined;
   useEffect(() => {
-    if (selectedId && !selected && units.length > 0) setSelectedId(null);
-  }, [selectedId, selected, units.length]);
+    if (selectedId && !selected && units.length > 0) select(null);
+  }, [selectedId, selected, units.length, select]);
   if (selected) {
     return (
       <IntervenePane
         unit={selected}
         canOpen={canOpen}
-        onBack={() => setSelectedId(null)}
+        onBack={() => select(null)}
       />
     );
   }
@@ -193,7 +196,7 @@ export function RosterView() {
                     u={u}
                     reason={attentionReason(u)}
                     canOpen={canOpen}
-                    onSelect={setSelectedId}
+                    onSelect={select}
                   />
                 ))}
               </section>
@@ -205,12 +208,7 @@ export function RosterView() {
                 </div>
               )}
               {all.map((u) => (
-                <UnitRow
-                  key={u.id}
-                  u={u}
-                  canOpen={canOpen}
-                  onSelect={setSelectedId}
-                />
+                <UnitRow key={u.id} u={u} canOpen={canOpen} onSelect={select} />
               ))}
             </section>
           </div>
