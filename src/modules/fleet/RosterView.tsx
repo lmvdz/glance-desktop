@@ -13,6 +13,7 @@ import {
   attentionUnits,
   sortUnits,
 } from "./lib/fleetRoster";
+import { AdoptableSessions } from "./AdoptableSessions";
 import { getWorktreeOpener, isLoopbackDaemon } from "./lib/worktreeOpener";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import {
@@ -176,8 +177,11 @@ export function RosterView() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <div className="mb-4">
+          <AdoptableSessions canOpen={canOpen} />
+        </div>
         {units.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-center py-10 text-sm text-gray-400 dark:text-gray-500">
             {connection === "connecting"
               ? "Loading roster…"
               : "No units — the fleet is idle."}
