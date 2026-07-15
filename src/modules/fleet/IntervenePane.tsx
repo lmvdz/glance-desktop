@@ -1,11 +1,13 @@
 import {
+  ArrowDown01Icon,
   ArrowLeft02Icon,
+  ArrowRight01Icon,
   FolderOpenIcon,
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
-import type { FleetUnit } from "./lib/fleetRoster";
+import { ConversationView } from "./ConversationView";
 import {
   type DiffLineKind,
   type FleetFileDiff,
@@ -13,9 +15,11 @@ import {
   normalizeDiff,
   whyStopped,
 } from "./lib/fleetIntervene";
+import type { FleetUnit } from "./lib/fleetRoster";
 import { getWorktreeOpener } from "./lib/worktreeOpener";
 import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
+import { useFleetTranscript } from "./store/fleetTranscriptStore";
 
 const LINE_CLS: Record<DiffLineKind, string> = {
   add: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -60,11 +64,22 @@ export function IntervenePane({
   const client = useFleetConnection((s) => s.client);
   const [diff, setDiff] = useState<FleetFileDiff[] | null>(null);
   const [diffErr, setDiffErr] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
   const [steerText, setSteerText] = useState("");
   const [steering, setSteering] = useState(false);
   const [steerErr, setSteerErr] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  const entries = useFleetTranscript((s) => s.entries);
+  const startTranscript = useFleetTranscript((s) => s.start);
+  const stopTranscript = useFleetTranscript((s) => s.stop);
+  const addOptimistic = useFleetTranscript((s) => s.addOptimistic);
+
+  // The unit's live ACP conversation polls while this pane is open.
+  useEffect(() => {
+    startTranscript(unit.id);
+    return () => stopTranscript();
+  }, [unit.id, startTranscript, stopTranscript]);
 
   useEffect(() => {
     let alive = true;
@@ -86,20 +101,19 @@ export function IntervenePane({
 
   const why = whyStopped(unit);
 
+  // Send a turn INTO the same ACP session (POST /api/command {type:"prompt"}) — never a keystroke/PTY
+  // path (the terax send_to_agent anti-pattern). Show the turn optimistically; the poll reconciles it.
   const steer = async () => {
     const message = steerText.trim();
     if (!message || steering) return;
+    const clientTurnId = crypto.randomUUID();
     setSteering(true);
     setSteerErr(null);
+    addOptimistic(message, clientTurnId);
+    setSteerText("");
     try {
       const res = await (await client()).steer(unit.id, message);
-      if (res.ok) {
-        setSteerText("");
-        setSent(true);
-        setTimeout(() => setSent(false), 2000);
-      } else {
-        setSteerErr(res.detail ?? "steer failed");
-      }
+      if (!res.ok) setSteerErr(res.detail ?? "steer failed");
     } catch (e) {
       setSteerErr(e instanceof Error ? e.message : "steer failed");
     } finally {
@@ -163,25 +177,41 @@ export function IntervenePane({
         {/* Who holds which file in this worktree (I04) — shared-workspace awareness. */}
         <WorkspaceOverlay repo={unit.repo} />
 
-        {/* Diff-as-spine. */}
-        <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Changes
+        {/* Changes — collapsible, so the conversation leads. */}
+        <button
+          type="button"
+          onClick={() => setShowDiff((v) => !v)}
+          className="mb-1.5 flex w-full items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+        >
+          <HugeiconsIcon
+            icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
+            size={12}
+          />
+          Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
+        </button>
+        {showDiff && (
+          <div className="mb-3 flex flex-col gap-2">
+            {diffErr ? (
+              <div className="text-[11px] text-red-500">{diffErr}</div>
+            ) : diff === null ? (
+              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                Loading diff…
+              </div>
+            ) : diff.length === 0 ? (
+              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+                No uncommitted changes.
+              </div>
+            ) : (
+              diff.map((fd) => <FileDiffBlock key={fd.file} fd={fd} />)
+            )}
+          </div>
+        )}
+
+        {/* The live ACP conversation — the spine of intervention. */}
+        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Conversation
         </div>
-        <div className="mt-1.5 flex flex-col gap-2">
-          {diffErr ? (
-            <div className="text-[11px] text-red-500">{diffErr}</div>
-          ) : diff === null ? (
-            <div className="text-[11px] text-gray-400 dark:text-gray-500">
-              Loading diff…
-            </div>
-          ) : diff.length === 0 ? (
-            <div className="text-[11px] text-gray-400 dark:text-gray-500">
-              No uncommitted changes.
-            </div>
-          ) : (
-            diff.map((fd) => <FileDiffBlock key={fd.file} fd={fd} />)
-          )}
-        </div>
+        <ConversationView entries={entries} />
       </div>
 
       {/* Steer composer. */}
@@ -197,7 +227,7 @@ export function IntervenePane({
                 void steer();
               }
             }}
-            placeholder="Steer this unit… (⌘/Ctrl+Enter to send)"
+            placeholder="Message this unit… (⌘/Ctrl+Enter to send)"
             rows={2}
             className="min-h-9 flex-1 resize-none rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-900 outline-none focus:border-emerald-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
           />
@@ -209,7 +239,7 @@ export function IntervenePane({
             className="flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <HugeiconsIcon icon={SentIcon} size={14} />
-            {steering ? "Sending…" : sent ? "Sent" : "Steer"}
+            {steering ? "Sending…" : "Send"}
           </button>
         </div>
         {steerErr && (
