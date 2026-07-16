@@ -4,6 +4,8 @@
 // http://localhost:* (verified during the fork bootstrap), so no Rust proxy is needed
 // for same-host daemons. A remote/https daemon is a later concern (Epic M).
 
+import { fleetFetch } from "./fleetFetch";
+
 export type FleetHealth =
   | { status: "connected"; detail: string }
   | { status: "unauthorized"; detail: string }
@@ -38,7 +40,7 @@ export class FleetClient {
 
   /** GET against the daemon, returning the raw Response (caller maps status). */
   async get(path: string, signal?: AbortSignal): Promise<Response> {
-    return fetch(`${this.config.baseUrl}${path}`, {
+    return fleetFetch(`${this.config.baseUrl}${path}`, {
       headers: this.headers(),
       signal,
     });
@@ -119,7 +121,7 @@ export class FleetClient {
     reason?: string;
     agent?: { id: string; name: string; worktree?: string };
   }> {
-    const res = await fetch(`${this.config.baseUrl}/api/agents/adopt`, {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/agents/adopt`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ harness, sessionId, cwd }),
@@ -140,7 +142,7 @@ export class FleetClient {
     id: string,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
-    const res = await fetch(`${this.config.baseUrl}/api/command`, {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/command`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ type: "interrupt", id }),
@@ -157,7 +159,7 @@ export class FleetClient {
     reason?: string,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
-    const res = await fetch(
+    const res = await fleetFetch(
       `${this.config.baseUrl}/api/agents/${encodeURIComponent(id)}/mode`,
       {
         method: "POST",
@@ -181,7 +183,7 @@ export class FleetClient {
     reason?: string;
     agent?: { id: string; name: string; worktree?: string };
   }> {
-    const res = await fetch(
+    const res = await fleetFetch(
       `${this.config.baseUrl}/api/agents/${encodeURIComponent(id)}/promote`,
       {
         method: "POST",
@@ -210,7 +212,7 @@ export class FleetClient {
     agent: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
-    const res = await fetch(`${this.config.baseUrl}/api/presence`, {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/presence`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ repo, agent }),
@@ -227,7 +229,7 @@ export class FleetClient {
     repo: string,
     signal?: AbortSignal,
   ): Promise<void> {
-    await fetch(
+    await fleetFetch(
       `${this.config.baseUrl}/api/presence?id=${encodeURIComponent(id)}&repo=${encodeURIComponent(repo)}`,
       {
         method: "DELETE",
@@ -246,7 +248,7 @@ export class FleetClient {
     profileId?: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
-    const res = await fetch(`${this.config.baseUrl}/api/console`, {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/console`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ repo, model, profileId }),
@@ -269,7 +271,7 @@ export class FleetClient {
     message: string,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
-    const res = await fetch(`${this.config.baseUrl}/api/command`, {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/command`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify({ type: "prompt", id, message }),
