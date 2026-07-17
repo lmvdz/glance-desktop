@@ -17,19 +17,19 @@ function Turn({ e }: { e: TranscriptEntry }) {
   const body = e.displayText ?? e.text;
   if (e.kind === "tool") {
     return (
-      <div className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-gray-800 dark:bg-gray-900/50">
+      <div className="rounded-md border border-border/60 bg-muted/50 px-2.5 py-1.5">
         <div className="flex items-center gap-2 text-[11px]">
-          <span className="font-mono font-medium text-sky-600 dark:text-sky-400">
+          <span className="font-mono font-medium text-info-foreground">
             {e.tool?.name ?? "tool"}
           </span>
           {e.status && (
-            <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
               {e.status}
             </span>
           )}
         </div>
         {e.tool?.resultText && (
-          <div className="mt-0.5 line-clamp-3 font-mono text-[10.5px] text-gray-500 dark:text-gray-400">
+          <div className="mt-0.5 line-clamp-3 font-mono text-[10.5px] text-muted-foreground">
             {e.tool.resultText}
           </div>
         )}
@@ -38,17 +38,17 @@ function Turn({ e }: { e: TranscriptEntry }) {
   }
   const tone =
     e.kind === "user"
-      ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30"
+      ? "border-success/30 bg-success/10"
       : e.kind === "thinking" || e.kind === "system"
         ? "border-transparent bg-transparent"
-        : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900/40";
+        : "border-border/60 bg-card";
   const textTone =
     e.kind === "thinking" || e.kind === "system"
-      ? "text-gray-400 italic dark:text-gray-500"
-      : "text-gray-800 dark:text-gray-100";
+      ? "text-muted-foreground/70 italic"
+      : "text-foreground";
   return (
     <div className={`rounded-md border px-2.5 py-1.5 ${tone}`}>
-      <div className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+      <div className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
         {KIND_LABEL[e.kind]}
       </div>
       <div
@@ -74,7 +74,7 @@ export function ConversationView({ entries }: { entries: TranscriptEntry[] }) {
 
   if (entries.length === 0) {
     return (
-      <div className="py-6 text-center text-[11px] text-gray-400 dark:text-gray-500">
+      <div className="py-6 text-center text-[11px] text-muted-foreground/70">
         No conversation yet — send an instruction below.
       </div>
     );
