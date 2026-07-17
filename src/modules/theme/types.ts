@@ -28,6 +28,18 @@ export type ThemeColors = Partial<{
   sidebarBorder: string;
   sidebarRing: string;
   radius: string;
+  // Status token family (t3face, plans/t3-face 01/02). Unset keys fall
+  // through to src/styles/t3face.css's :root/.dark defaults — applyTheme
+  // removes-then-writes only the vars a theme actually provides, so a
+  // theme that omits these four still gets t3face's status colors.
+  warning: string;
+  warningForeground: string;
+  info: string;
+  infoForeground: string;
+  success: string;
+  successForeground: string;
+  pending: string;
+  pendingForeground: string;
 }>;
 
 export type TerminalPalette = Partial<{

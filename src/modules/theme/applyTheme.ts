@@ -28,6 +28,14 @@ const COLOR_VAR: Record<keyof ThemeColors, string> = {
   sidebarBorder: "--sidebar-border",
   sidebarRing: "--sidebar-ring",
   radius: "--radius",
+  warning: "--warning",
+  warningForeground: "--warning-foreground",
+  info: "--info",
+  infoForeground: "--info-foreground",
+  success: "--success",
+  successForeground: "--success-foreground",
+  pending: "--pending",
+  pendingForeground: "--pending-foreground",
 };
 
 const ANSI_VARS: readonly string[] = [

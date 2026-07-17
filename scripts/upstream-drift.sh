@@ -39,7 +39,7 @@ CONFLICT_N="$(wc -l <"$tmp/conflicts" | tr -d ' ')"
 
 # The registration points the additive fleet module touches upstream files at — the most
 # likely conflict sites. If upstream changed any of these, a rebase needs a careful hand.
-REG_POINTS='src/app/App.tsx src/app/components/WorkspaceSurface.tsx src/modules/command-palette/commands.ts src/modules/spaces/lib/serialize.ts src/modules/tabs/index.ts src/modules/tabs/lib/useTabs.ts src/modules/tabs/lib/tabLabel.ts src/settings/SettingsApp.tsx src/modules/settings/openSettingsWindow.ts'
+REG_POINTS='src/app/App.tsx src/app/components/WorkspaceSurface.tsx src/modules/command-palette/commands.ts src/modules/spaces/lib/serialize.ts src/modules/tabs/index.ts src/modules/tabs/lib/useTabs.ts src/modules/tabs/lib/tabLabel.ts src/settings/SettingsApp.tsx src/modules/settings/openSettingsWindow.ts src/modules/theme/applyTheme.ts src/modules/theme/validateTheme.ts'
 reg_hits=""
 for f in $REG_POINTS; do
   grep -qxF "$f" "$tmp/theirs" && reg_hits="$reg_hits $f"
