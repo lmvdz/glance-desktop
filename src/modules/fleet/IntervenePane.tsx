@@ -32,21 +32,21 @@ import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetTranscript } from "./store/fleetTranscriptStore";
 
 const LINE_CLS: Record<DiffLineKind, string> = {
-  add: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  del: "bg-red-500/10 text-red-700 dark:text-red-300",
-  hunk: "text-sky-600 dark:text-sky-400",
-  meta: "text-gray-400 dark:text-gray-500",
-  context: "text-gray-600 dark:text-gray-300",
+  add: "bg-success/10 text-success-foreground",
+  del: "bg-destructive/10 text-destructive",
+  hunk: "text-info-foreground",
+  meta: "text-muted-foreground/70",
+  context: "text-muted-foreground",
 };
 
 function FileDiffBlock({ fd }: { fd: FleetFileDiff }) {
   return (
-    <div className="overflow-hidden rounded-md border border-gray-200 dark:border-gray-800">
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-2.5 py-1 dark:border-gray-800 dark:bg-gray-900/60">
-        <span className="truncate font-mono text-[11px] text-gray-700 dark:text-gray-200">
+    <div className="overflow-hidden rounded-md border border-border/60">
+      <div className="flex items-center justify-between border-b border-border/60 bg-muted/60 px-2.5 py-1">
+        <span className="truncate font-mono text-[11px] text-foreground/85">
           {fd.file}
         </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground/70">
           {fd.status}
         </span>
       </div>
@@ -199,19 +199,19 @@ export function IntervenePane({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
+      <header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
         <button
           type="button"
           onClick={onBack}
           title="Back to roster"
-          className="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-gray-400 dark:hover:bg-gray-800"
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           <HugeiconsIcon icon={ArrowLeft02Icon} size={16} />
         </button>
-        <span className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <span className="truncate text-sm font-semibold text-foreground">
           {unit.name}
         </span>
-        <span className="shrink-0 text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+        <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground/70">
           {unit.status}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
@@ -222,7 +222,7 @@ export function IntervenePane({
                 onClick={() => void handBack()}
                 disabled={takeover.phase === "handing-back"}
                 title="Restore the unit's mode and resume it with your changes"
-                className="flex h-7 items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-success/40 bg-success/10 px-2 text-[11px] font-medium text-success-foreground hover:bg-success/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <HugeiconsIcon icon={Logout03Icon} size={13} />
                 {takeover.phase === "handing-back"
@@ -235,7 +235,7 @@ export function IntervenePane({
                 onClick={() => void takeOver()}
                 disabled={takeover.phase === "taking-over"}
                 title="Pause the agent and drive this worktree yourself"
-                className="flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] text-foreground/75 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <HugeiconsIcon icon={UserSharingIcon} size={13} />
                 {takeover.phase === "taking-over"
@@ -254,7 +254,7 @@ export function IntervenePane({
                 })
               }
               title={`Open ${unit.worktree} as a Space`}
-              className="flex h-7 items-center gap-1 rounded-md border border-gray-200 px-2 text-[11px] text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] text-foreground/75 hover:bg-accent"
             >
               <HugeiconsIcon icon={FolderOpenIcon} size={13} />
               Open worktree
@@ -264,14 +264,14 @@ export function IntervenePane({
       </header>
 
       {driving && (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-success/30 bg-success/10 px-3 py-1.5 text-[11px] text-success-foreground">
           <HugeiconsIcon icon={UserSharingIcon} size={13} />
           You're driving — the agent is paused (observe). Edit in the worktree,
           then hand back to resume it.
         </div>
       )}
       {takeover.error && (
-        <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-1.5 text-[11px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive">
           {takeover.error}
         </div>
       )}
@@ -279,15 +279,15 @@ export function IntervenePane({
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {/* Why-stopped — the first thing you want when a unit needs you. */}
         <div
-          className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30" : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/40"}`}
+          className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-warning/40 bg-warning/10" : "border-border/60 bg-muted/40"}`}
         >
           <div
-            className={`text-[12px] font-medium ${why.needsHuman ? "text-amber-700 dark:text-amber-300" : "text-gray-700 dark:text-gray-200"}`}
+            className={`text-[12px] font-medium ${why.needsHuman ? "text-warning-foreground" : "text-foreground/85"}`}
           >
             {why.label}
           </div>
           {why.detail && (
-            <div className="mt-0.5 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
               {why.detail}
             </div>
           )}
@@ -300,7 +300,7 @@ export function IntervenePane({
         <button
           type="button"
           onClick={() => setShowDiff((v) => !v)}
-          className="mb-1.5 flex w-full items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+          className="mb-1.5 flex w-full cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
         >
           <HugeiconsIcon
             icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
@@ -311,13 +311,13 @@ export function IntervenePane({
         {showDiff && (
           <div className="mb-3 flex flex-col gap-2">
             {diffErr ? (
-              <div className="text-[11px] text-red-500">{diffErr}</div>
+              <div className="text-[11px] text-destructive">{diffErr}</div>
             ) : diff === null ? (
-              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+              <div className="text-[11px] text-muted-foreground/70">
                 Loading diff…
               </div>
             ) : diff.length === 0 ? (
-              <div className="text-[11px] text-gray-400 dark:text-gray-500">
+              <div className="text-[11px] text-muted-foreground/70">
                 No uncommitted changes.
               </div>
             ) : (
@@ -327,14 +327,14 @@ export function IntervenePane({
         )}
 
         {/* The live ACP conversation — the spine of intervention. */}
-        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
           Conversation
         </div>
         <ConversationView entries={entries} />
       </div>
 
       {/* Steer composer. */}
-      <div className="shrink-0 border-t border-gray-200 p-2.5 dark:border-gray-800">
+      <div className="shrink-0 border-t border-border/60 p-2.5">
         <div className="flex items-end gap-2">
           <textarea
             ref={composerRef}
@@ -348,21 +348,21 @@ export function IntervenePane({
             }}
             placeholder="Message this unit… (⌘/Ctrl+Enter to send)"
             rows={2}
-            className="min-h-9 flex-1 resize-none rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[12px] text-gray-900 outline-none focus:border-emerald-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            className="min-h-9 flex-1 resize-none rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-[12px] text-foreground outline-none focus:border-ring"
           />
           <button
             type="button"
             onClick={() => void steer()}
             disabled={steering || !steerText.trim()}
             title="Send (⌘/Ctrl+Enter)"
-            className="flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-9 cursor-pointer items-center gap-1 rounded-md bg-primary px-3 text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           >
             <HugeiconsIcon icon={SentIcon} size={14} />
             {steering ? "Sending…" : "Send"}
           </button>
         </div>
         {steerErr && (
-          <div className="mt-1 text-[11px] text-red-500">{steerErr}</div>
+          <div className="mt-1 text-[11px] text-destructive">{steerErr}</div>
         )}
       </div>
     </div>
