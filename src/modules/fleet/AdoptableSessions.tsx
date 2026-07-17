@@ -66,22 +66,22 @@ export function AdoptableSessions({ canOpen }: { canOpen: boolean }) {
 
   return (
     <section className="flex flex-col gap-1.5">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-sky-600 dark:text-sky-400">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-info-foreground">
         Ad-hoc sessions ({sessions.length})
       </div>
       {sessions.map((s) => (
         <div
           key={s.key}
-          className="flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5 dark:border-gray-800"
+          className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5"
         >
           <span
-            className="size-1.5 shrink-0 rounded-full bg-sky-500"
+            className="size-1.5 shrink-0 rounded-full bg-info"
             aria-hidden
           />
-          <span className="truncate text-[12px] font-medium text-gray-800 dark:text-gray-100">
+          <span className="truncate text-[12px] font-medium text-foreground">
             {s.harness}
           </span>
-          <span className="truncate text-[11px] text-gray-500 dark:text-gray-400">
+          <span className="truncate text-[11px] text-muted-foreground">
             {s.repoName}
             {s.host ? ` · ${s.host}` : ""}
           </span>
@@ -90,13 +90,13 @@ export function AdoptableSessions({ canOpen }: { canOpen: boolean }) {
             onClick={() => void adopt(s)}
             disabled={busy === s.key}
             title="Capture this session's work into a new fleet unit"
-            className="ml-auto shrink-0 rounded-md border border-gray-200 px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            className="ml-auto shrink-0 cursor-pointer rounded-md border border-border/60 px-2 py-0.5 text-[11px] text-foreground/75 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy === s.key ? "Adopting…" : "Adopt"}
           </button>
         </div>
       ))}
-      {err && <div className="text-[11px] text-red-500">{err}</div>}
+      {err && <div className="text-[11px] text-destructive">{err}</div>}
     </section>
   );
 }
