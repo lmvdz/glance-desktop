@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import {
   type TranscriptEntry,
-  maxSeq,
   mergeTranscript,
   normalizeTranscript,
   reconcileOptimistic,
+  runningFloor,
 } from "../lib/fleetTranscript";
 import { useFleetConnection } from "./fleetConnectionStore";
 
@@ -16,6 +16,12 @@ import { useFleetConnection } from "./fleetConnectionStore";
 // M02: a unit's transcript lives on ITS daemon, not necessarily the active one, so `start` takes
 // the daemon id alongside the unit id and builds its client from `useFleetConnection`'s
 // per-daemon lookup instead of the old single-daemon `getDaemonUrl`/`getFleetToken` back-compat.
+//
+// t3-face C04: the cursor is `runningFloor`, not `maxSeq` — the daemon mutates a streaming entry
+// (assistant text growing, a tool going running→done) IN PLACE without bumping `seq`, so a cursor
+// that has already passed that entry's seq would never see the daemon settle it. Holding the
+// floor one below the lowest still-running entry keeps re-requesting it (and everything after)
+// until it settles; see fleetTranscript.ts for the full mechanism.
 
 const POLL_MS = 1500;
 
@@ -45,7 +51,7 @@ async function pollOnce(
   inFlight = ctrl;
   try {
     const client = await useFleetConnection.getState().client(daemonId);
-    const since = maxSeq(get().entries);
+    const since = runningFloor(get().entries);
     const raw = await client.transcript(
       unitId,
       since > 0 ? since : undefined,
