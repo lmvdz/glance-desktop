@@ -5,7 +5,11 @@ import {
 } from "@/components/ui/resizable";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { consumeLaunchFiles, getLaunchDir } from "@/lib/launchDir";
+import {
+  consumeLaunchFiles,
+  getLaunchDir,
+  hasExplicitLaunchTarget,
+} from "@/lib/launchDir";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { usePresence } from "@/lib/usePresence";
 import { useZoom } from "@/lib/useZoom";
@@ -34,7 +38,7 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
-import { setWorktreeOpener } from "@/modules/fleet";
+import { setWorktreeOpener, useFleetConnection } from "@/modules/fleet";
 import { type FleetUnit, unitKey } from "@/modules/fleet/lib/fleetRoster";
 import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
 import { useFleetRoster } from "@/modules/fleet/store/fleetRosterStore";
@@ -100,6 +104,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { planCockpitBoot } from "./lib/cockpitBoot";
 import { CloseDialogs } from "./components/CloseDialogs";
 import {
   TOGGLE_BLOCK_INPUT_EVENT,
@@ -266,6 +271,42 @@ export default function App() {
     setActiveId,
     adoptWorkspaceEnv,
   ]);
+
+  // Cockpit-first launch (t3-face C13-F2): once spaces have restored, land in the
+  // fleet cockpit when a daemon connection is configured — open a fleet tab, or focus
+  // the one the space already restored. Yields to an explicit launch target (glance
+  // <path> / "Open With") and to the "Open fleet on launch" toggle, and does nothing
+  // when no connection is set up (ADE boot unchanged). See planCockpitBoot for the
+  // full precedence. Runs once per launch; hooks the same spaces-hydrated signal that
+  // activates restored tabs, so no setTimeout race.
+  const cockpitDecidedRef = useRef(false);
+  useEffect(() => {
+    if (cockpitDecidedRef.current) return;
+    if (!spacesHydrated || !activeSpaceId) return;
+    cockpitDecidedRef.current = true;
+    void (async () => {
+      await usePreferencesStore
+        .getState()
+        .init()
+        .catch(() => {});
+      await useFleetConnection
+        .getState()
+        .init()
+        .catch(() => {});
+      const existing = tabsRef.current.find(
+        (t) => t.kind === "fleet" && t.spaceId === activeSpaceId,
+      );
+      const action = planCockpitBoot({
+        openFleetOnLaunch: usePreferencesStore.getState().openFleetOnLaunch,
+        connectionConfigured:
+          useFleetConnection.getState().connections.length > 0,
+        hasExplicitLaunchTarget: hasExplicitLaunchTarget(),
+        existingFleetTabId: existing?.id ?? null,
+      });
+      if (action.kind === "focus") setActiveId(action.tabId);
+      else if (action.kind === "open") newFleetTab();
+    })();
+  }, [spacesHydrated, activeSpaceId, setActiveId, newFleetTab]);
 
   const [switcherOpen, setSwitcherOpen] = useState(false);
 

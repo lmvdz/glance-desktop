@@ -21,6 +21,7 @@ import {
   setAutostart,
   setDefaultWorkspaceEnv,
   setExplorerGitDecorations,
+  setOpenFleetOnLaunch,
   setRestoreWindowState,
   setShowHidden,
   setTerminalCursorBlink,
@@ -77,6 +78,7 @@ export function GeneralSection() {
 
   const autostart = usePreferencesStore((s) => s.autostart);
   const restoreWindowState = usePreferencesStore((s) => s.restoreWindowState);
+  const openFleetOnLaunch = usePreferencesStore((s) => s.openFleetOnLaunch);
   const showHidden = usePreferencesStore((s) => s.showHidden);
   const explorerGitDecorations = usePreferencesStore(
     (s) => s.explorerGitDecorations,
@@ -459,6 +461,15 @@ export function GeneralSection() {
             <Switch
               checked={restoreWindowState}
               onCheckedChange={(v) => void setRestoreWindowState(v)}
+            />
+          </SettingRow>
+          <SettingRow
+            title="Open fleet on launch"
+            description="When a fleet daemon connection is set up, land in the fleet cockpit at startup instead of a terminal. Ignored when you open Glance on a specific file or folder."
+          >
+            <Switch
+              checked={openFleetOnLaunch}
+              onCheckedChange={(v) => void setOpenFleetOnLaunch(v)}
             />
           </SettingRow>
         </div>
