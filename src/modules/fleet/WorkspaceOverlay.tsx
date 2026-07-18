@@ -23,8 +23,8 @@ export function WorkspaceOverlay({ repo }: { repo: string }) {
   if (groups.length === 0) return null;
 
   return (
-    <div className="mb-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/40">
-      <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+    <div className="mb-3 rounded-md border border-border/60 bg-muted/40 px-3 py-2">
+      <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
         Working here
       </div>
       <div className="flex flex-col gap-1.5">
@@ -35,13 +35,13 @@ export function WorkspaceOverlay({ repo }: { repo: string }) {
               size={13}
               className={
                 g.human
-                  ? "mt-0.5 shrink-0 text-emerald-500"
-                  : "mt-0.5 shrink-0 text-gray-400 dark:text-gray-500"
+                  ? "mt-0.5 shrink-0 text-success"
+                  : "mt-0.5 shrink-0 text-muted-foreground/60"
               }
             />
             <div className="flex min-w-0 flex-col">
               <span
-                className={`text-[11px] font-medium ${g.human ? "text-emerald-600 dark:text-emerald-400" : "text-gray-600 dark:text-gray-300"}`}
+                className={`text-[11px] font-medium ${g.human ? "text-success-foreground" : "text-foreground/80"}`}
               >
                 {g.human ? "you" : g.session}
               </span>
@@ -49,7 +49,7 @@ export function WorkspaceOverlay({ repo }: { repo: string }) {
                 {g.files.map((f) => (
                   <span
                     key={f}
-                    className="flex items-center gap-1 font-mono text-[10.5px] text-gray-500 dark:text-gray-400"
+                    className="flex items-center gap-1 font-mono text-[10.5px] text-muted-foreground"
                   >
                     <HugeiconsIcon icon={File01Icon} size={10} />
                     {f}
