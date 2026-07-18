@@ -3,8 +3,10 @@
 // <IntervenePane…>` modal drill-down: the list (ThreadSpine) never unmounts when the selection
 // changes; only the right-hand detail side swaps between IntervenePane and the empty state.
 
+import { CursorMagicSelection02Icon } from "@hugeicons/core-free-icons";
 import { useEffect } from "react";
 import { IntervenePane } from "../IntervenePane";
+import { FleetEmpty } from "../EmptyState";
 import { canOpenUnitWorktree } from "../lib/worktreeOpener";
 import { unitKey } from "../lib/fleetRoster";
 import { useFleetConnection } from "../store/fleetConnectionStore";
@@ -14,14 +16,12 @@ import { ThreadSpine } from "./ThreadSpine";
 
 function EmptyDetail() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 p-8 text-center">
-      <span className="text-[13px] font-medium text-foreground/85">
-        Select a unit
-      </span>
-      <span className="max-w-xs text-[11px] text-muted-foreground/70">
-        Pick a unit or ad-hoc session on the left to see why it stopped, its
-        diff, and steer it.
-      </span>
+    <div className="flex h-full w-full items-center justify-center">
+      <FleetEmpty
+        icon={CursorMagicSelection02Icon}
+        title="Select a unit"
+        description="Pick a unit or session on the left to see why it stopped, review its diff, and steer it."
+      />
     </div>
   );
 }

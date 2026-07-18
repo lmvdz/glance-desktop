@@ -31,6 +31,10 @@ type FleetTranscriptState = {
   unitId: string | null;
   daemonId: string | null;
   entries: TranscriptEntry[];
+  /** False until the first poll for the current unit resolves (or it was seeded from prewarm) — lets
+   *  the pane show a loading skeleton on a cold open and distinguish "still fetching" from a unit
+   *  that genuinely has no conversation yet (t3-face concern 11). */
+  loaded: boolean;
   start: (unitId: string, daemonId: string) => void;
   stop: () => void;
   /** Optimistically show the user's just-sent turn; the poll reconciles it against the server echo. */
@@ -66,12 +70,16 @@ async function pollOnce(
     )
       return;
     const delta = normalizeTranscript(raw);
-    if (delta.length === 0) return; // nothing new
-    set({
-      entries: reconcileOptimistic(mergeTranscript(get().entries, delta)),
-    });
+    // Mark loaded the first time a poll resolves for this unit — even with an empty delta, so a unit
+    // that genuinely has no conversation drops out of the loading skeleton into the empty state.
+    const patch: Partial<FleetTranscriptState> = {};
+    if (!get().loaded) patch.loaded = true;
+    if (delta.length > 0)
+      patch.entries = reconcileOptimistic(mergeTranscript(get().entries, delta));
+    if (patch.loaded !== undefined || patch.entries !== undefined) set(patch);
   } catch {
-    // Keep the conversation on a transient failure — it just stops growing until the next poll.
+    // Keep the conversation on a transient failure — it just stops growing until the next poll. A
+    // failed FIRST poll still leaves the skeleton; the next poll (1.5s) clears it once it resolves.
   }
 }
 
@@ -79,6 +87,7 @@ export const useFleetTranscript = create<FleetTranscriptState>((set, get) => ({
   unitId: null,
   daemonId: null,
   entries: [],
+  loaded: false,
 
   start: (unitId: string, daemonId: string) => {
     if (currentUnit === unitId && currentDaemon === daemonId && timer) return;
@@ -92,7 +101,10 @@ export const useFleetTranscript = create<FleetTranscriptState>((set, get) => ({
     // runningFloor, so the first poll only fetches what's changed since the prewarm snapshot; a
     // cold (unwarmed) unit falls back to `[]` exactly as before.
     const seed = getPrewarmedTranscript(unitKey({ daemonId, id: unitId })) ?? [];
-    set({ unitId, daemonId, entries: seed });
+    // A prewarmed seed is already a real fetch result — treat it as loaded so a warm open never
+    // flashes a skeleton over content it already has; a cold ([]) open shows the skeleton until the
+    // first poll resolves below.
+    set({ unitId, daemonId, entries: seed, loaded: seed.length > 0 });
     void pollOnce(unitId, daemonId, get, set);
     timer = setInterval(
       () => void pollOnce(unitId, daemonId, get, set),
@@ -107,7 +119,7 @@ export const useFleetTranscript = create<FleetTranscriptState>((set, get) => ({
     inFlight = null;
     currentUnit = null;
     currentDaemon = null;
-    set({ unitId: null, daemonId: null, entries: [] });
+    set({ unitId: null, daemonId: null, entries: [], loaded: false });
   },
 
   addOptimistic: (text: string, clientTurnId: string) => {
