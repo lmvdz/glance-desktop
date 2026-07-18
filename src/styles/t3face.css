@@ -742,6 +742,275 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Diff surface — the t3-grade diff renderer's theme bridge (concern 10,
+ * escape-hatch: @pierre/diffs overshoots the 1500 KB client-JS budget by
+ * ~1.9 MB — shiki's string-keyed grammar lookup defeats tree-shaking — so
+ * the existing hand-rolled renderer was brought up to grade with tokens
+ * instead of a new dependency). This section is fork-original (NOT ported
+ * from t3/pierre); every color maps onto the t3face status/surface tokens
+ * above so the diff repaints under dracula/nord/etc. and passes the
+ * concern-13 raw-palette grep gate. Layout lives here (not Tailwind) so the
+ * renderer's JSX stays tiny — the whole point of the size escape hatch.
+ * ---------------------------------------------------------------------- */
+
+.diff-file {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 0.375rem;
+  background: var(--card);
+  font-family:
+    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.diff-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--muted) 60%, var(--card));
+  padding: 0.25rem 0.625rem;
+}
+
+.diff-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--foreground) 85%, transparent);
+  font-size: 11px;
+}
+
+.diff-file-status {
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+}
+
+.diff-comment-btn {
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--info) 40%, transparent);
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+  padding: 0.05rem 0.4rem;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--info-foreground);
+}
+
+.diff-comment-btn:hover {
+  background: color-mix(in srgb, var(--info) 24%, transparent);
+}
+
+.diff-body {
+  overflow-x: auto;
+}
+
+.diff-raw {
+  overflow-x: auto;
+  margin: 0;
+  padding: 0.375rem 0.625rem;
+  font-size: 11px;
+  white-space: pre;
+  color: var(--muted-foreground);
+}
+
+.diff-empty {
+  padding: 0.375rem 0.625rem;
+  font-size: 11px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+}
+
+/* Unified rows: [old#][new#][sign][text]. width:max-content + min-width:100%
+   lets long lines drive horizontal scroll while short rows still fill the
+   card so their tint spans edge to edge. */
+.diff-row {
+  display: grid;
+  grid-template-columns: 3.4ch 3.4ch 1.4ch 1fr;
+  align-items: baseline;
+  width: max-content;
+  min-width: 100%;
+}
+
+.diff-gutter {
+  padding-inline: 0.3rem;
+  text-align: right;
+  color: var(--muted-foreground);
+  opacity: 0.6;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+.diff-sign {
+  text-align: center;
+  user-select: none;
+  opacity: 0.7;
+}
+
+.diff-text {
+  padding-right: 0.625rem;
+  white-space: pre;
+}
+
+.diff-body[data-wrap="true"] .diff-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-body[data-wrap="true"] .diff-row,
+.diff-body[data-wrap="true"] .diff-split-row {
+  width: auto;
+  min-width: 0;
+}
+
+/* File-status tints, mapped onto the status tokens. */
+.diff-row[data-kind="add"],
+.diff-cell[data-kind="add"] {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success-foreground);
+}
+
+.diff-row[data-kind="add"] .diff-gutter,
+.diff-cell[data-kind="add"] .diff-gutter {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success-foreground);
+  opacity: 1;
+}
+
+.diff-row[data-kind="del"],
+.diff-cell[data-kind="del"] {
+  background: color-mix(in srgb, var(--destructive) 12%, transparent);
+  color: var(--destructive-foreground);
+}
+
+.diff-row[data-kind="del"] .diff-gutter,
+.diff-cell[data-kind="del"] .diff-gutter {
+  background: color-mix(in srgb, var(--destructive) 20%, transparent);
+  color: var(--destructive-foreground);
+  opacity: 1;
+}
+
+.diff-row[data-kind="context"],
+.diff-cell[data-kind="context"] {
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+
+.diff-hunk {
+  padding: 0.1rem 0.625rem;
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  color: var(--info-foreground);
+  font-size: 10px;
+  white-space: pre;
+}
+
+/* Line selection → review comment (clickable only when a sink is wired). */
+.diff-row[data-clickable],
+.diff-cell[data-clickable] {
+  cursor: pointer;
+}
+
+.diff-row[data-selected],
+.diff-cell[data-selected] {
+  background: color-mix(in srgb, var(--info) 18%, transparent);
+  box-shadow: inset 2px 0 0 var(--info);
+}
+
+/* Split view: two aligned columns; empty half is an inert filler. */
+.diff-split-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.diff-cell {
+  display: grid;
+  grid-template-columns: 3.4ch 1.4ch 1fr;
+  align-items: baseline;
+  border-right: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  min-width: 0;
+}
+
+.diff-split-row .diff-cell:last-child {
+  border-right: none;
+}
+
+.diff-cell[data-kind="empty"] {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.diff-split .diff-text {
+  overflow: hidden;
+}
+
+.diff-split[data-wrap="true"] .diff-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Split⇄unified + wrap control (t3 DiffPanel idiom, hand-rolled — see
+   DiffViewToggle.tsx for why not the shadcn ToggleGroup/Switch). */
+.diff-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.diff-seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 0.375rem;
+}
+
+.diff-seg > button {
+  cursor: pointer;
+  padding: 0.05rem 0.5rem;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  transition: background-color 0.12s ease;
+}
+
+.diff-seg > button + button {
+  border-left: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+}
+
+.diff-seg > button:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.diff-seg > button[data-active] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.diff-wrap-btn {
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.05rem 0.5rem;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  transition: background-color 0.12s ease;
+}
+
+.diff-wrap-btn:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.diff-wrap-btn[data-active] {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+  color: var(--foreground);
+}
+
+/* ---------------------------------------------------------------------- *
  * WebKitGTK kill switch — apply `t3face-flat` to <html> (default off; a
  * one-line flip if the Linux capture pass in concern 13 shows jank) to
  * disable the three most GPU-costly substrate effects in one place: body
