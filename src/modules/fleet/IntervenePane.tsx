@@ -7,16 +7,17 @@ import {
   UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ComposerShell } from "@/components/composer/ComposerShell";
 import { ConversationView } from "./ConversationView";
 import {
-  type DiffLineKind,
-  type FleetFileDiff,
-  diffLineKind,
-  normalizeDiff,
-  whyStopped,
-} from "./lib/fleetIntervene";
+  DiffFile,
+  type DiffViewMode,
+  DiffViewToggle,
+  type QuotePayload,
+  parseUnifiedDiff,
+} from "./diffs";
+import { type FleetFileDiff, normalizeDiff, whyStopped } from "./lib/fleetIntervene";
 import { type FleetUnit, unitKey } from "./lib/fleetRoster";
 import {
   IDLE_TAKEOVER,
@@ -32,34 +33,29 @@ import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetTranscript } from "./store/fleetTranscriptStore";
 import { useSteerDraftStore } from "./store/fleetSteerDraftStore";
 
-const LINE_CLS: Record<DiffLineKind, string> = {
-  add: "bg-success/10 text-success-foreground",
-  del: "bg-destructive/10 text-destructive",
-  hunk: "text-info-foreground",
-  meta: "text-muted-foreground/70",
-  context: "text-muted-foreground",
-};
-
-function FileDiffBlock({ fd }: { fd: FleetFileDiff }) {
+function FleetDiffFile({
+  fd,
+  view,
+  wrap,
+  onQuote,
+}: {
+  fd: FleetFileDiff;
+  view: DiffViewMode;
+  wrap: boolean;
+  onQuote: (p: QuotePayload) => void;
+}) {
+  // Daemon serves a per-file unified-diff string; parse once per file.
+  const parsed = useMemo(() => parseUnifiedDiff(fd.diff), [fd.diff]);
   return (
-    <div className="overflow-hidden rounded-md border border-border/60">
-      <div className="flex items-center justify-between border-b border-border/60 bg-muted/60 px-2.5 py-1">
-        <span className="truncate font-mono text-[11px] text-foreground/85">
-          {fd.file}
-        </span>
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground/70">
-          {fd.status}
-        </span>
-      </div>
-      <pre className="overflow-x-auto px-2.5 py-1.5 text-[11px] leading-relaxed">
-        {fd.diff.split("\n").map((line, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are static, index is stable
-          <div key={i} className={LINE_CLS[diffLineKind(line)]}>
-            {line || " "}
-          </div>
-        ))}
-      </pre>
-    </div>
+    <DiffFile
+      file={fd.file}
+      status={fd.status}
+      parsed={parsed}
+      raw={fd.diff}
+      view={view}
+      wrap={wrap}
+      onQuote={onQuote}
+    />
   );
 }
 
@@ -79,6 +75,8 @@ export function IntervenePane({
   const [diff, setDiff] = useState<FleetFileDiff[] | null>(null);
   const [diffErr, setDiffErr] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
+  const [diffView, setDiffView] = useState<DiffViewMode>("unified");
+  const [diffWrap, setDiffWrap] = useState(false);
   // Draft text lives in a persisted store keyed per unit (M02's daemonId:id key), NOT local
   // state — the law-5 fix. A plain useState here is exactly what used to lose the human's
   // half-typed instruction the instant RosterView force-clears selection and this pane
@@ -215,6 +213,21 @@ export function IntervenePane({
     }
   };
 
+  // Line-selection → review comment: lift the picked diff lines into the unit's
+  // steer draft as a quoted reference, so the next turn can address them
+  // directly. Writes concern 08's persisted per-unit draft store (the same sink
+  // the composer reads), so a comment-in-progress survives an unmount/land the
+  // way a typed instruction now does — not an invented seam.
+  const quoteToComposer = useCallback(
+    (p: QuotePayload) => {
+      const block = `Re \`${p.label}\`:\n\n\`\`\`\n${p.text}\n\`\`\`\n\n`;
+      const prev = useSteerDraftStore.getState().drafts[draftKey] ?? "";
+      setDraft(draftKey, prev ? `${prev}\n${block}` : block);
+      composerRef.current?.focus();
+    },
+    [draftKey, setDraft],
+  );
+
   const driving =
     takeover.phase === "active" || takeover.phase === "handing-back";
 
@@ -318,17 +331,27 @@ export function IntervenePane({
         <WorkspaceOverlay repo={unit.repo} />
 
         {/* Changes — collapsible, so the conversation leads. */}
-        <button
-          type="button"
-          onClick={() => setShowDiff((v) => !v)}
-          className="mb-1.5 flex w-full cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
-        >
-          <HugeiconsIcon
-            icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
-            size={12}
-          />
-          Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
-        </button>
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setShowDiff((v) => !v)}
+            className="flex cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
+          >
+            <HugeiconsIcon
+              icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
+              size={12}
+            />
+            Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
+          </button>
+          {showDiff && diff && diff.length > 0 && (
+            <DiffViewToggle
+              view={diffView}
+              onView={setDiffView}
+              wrap={diffWrap}
+              onWrap={setDiffWrap}
+            />
+          )}
+        </div>
         {showDiff && (
           <div className="mb-3 flex flex-col gap-2">
             {diffErr ? (
@@ -342,7 +365,15 @@ export function IntervenePane({
                 No uncommitted changes.
               </div>
             ) : (
-              diff.map((fd) => <FileDiffBlock key={fd.file} fd={fd} />)
+              diff.map((fd) => (
+                <FleetDiffFile
+                  key={fd.file}
+                  fd={fd}
+                  view={diffView}
+                  wrap={diffWrap}
+                  onQuote={quoteToComposer}
+                />
+              ))
             )}
           </div>
         )}
