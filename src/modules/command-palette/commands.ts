@@ -1,5 +1,8 @@
 import type { SearchTarget } from "@/modules/header";
-import { type LadderPriority, ladderMeta } from "@/modules/fleet/lib/fleetLadder";
+import {
+  type LadderPriority,
+  ladderMeta,
+} from "@/modules/fleet/lib/fleetLadder";
 import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs";
 import { leafIds } from "@/modules/terminal";
 import {
@@ -14,7 +17,6 @@ import {
   LayoutTwoRowIcon,
   PaintBoardIcon,
   Search01Icon,
-  ServerStack01Icon,
   Settings01Icon,
   SidebarLeftIcon,
   SourceCodeIcon,
@@ -57,7 +59,6 @@ export type CommandPaletteActionContext = {
   openNewPrivate: () => void;
   openNewEditor: () => void;
   openNewPreview: () => void;
-  openNewFleet: () => void;
   openGitGraph: () => void;
   toggleSourceControl: () => void;
   closeActiveTabOrPane: () => void;
@@ -183,7 +184,11 @@ export function createCommandItems(
         title: u.name,
         group: "Fleet" as const,
         keywords: ["fleet", "unit", "agent", u.name, u.repoLabel, meta.label],
-        leadingDot: { className: meta.dot, pulse: meta.pulse, label: meta.label },
+        leadingDot: {
+          className: meta.dot,
+          pulse: meta.pulse,
+          label: meta.label,
+        },
         trailing: fmtAge(u.startedAt),
         run: () => ctx.openFleetUnit(u.key),
       };
@@ -232,14 +237,6 @@ export function createCommandItems(
       icon: Globe02Icon,
       shortcutId: "tab.newPreview",
       run: ctx.openNewPreview,
-    },
-    {
-      id: "tab.newFleet",
-      title: "New fleet pane",
-      group: "Tabs",
-      keywords: ["fleet", "glance", "daemon", "agents", "squad"],
-      icon: ServerStack01Icon,
-      run: ctx.openNewFleet,
     },
     {
       id: "tab.close",

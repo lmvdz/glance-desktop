@@ -6,6 +6,7 @@ import type { Tab } from "@/modules/tabs";
 import { TabBar } from "@/modules/tabs";
 import {
   CommandIcon,
+  DashboardCircleIcon,
   Settings01Icon,
   SidebarLeftIcon,
 } from "@hugeicons/core-free-icons";
@@ -42,6 +43,8 @@ type Props = {
   onReorder: (fromId: number, toGapIndex: number) => void;
   onOverrideLanguage?: (id: number, lang: string | null) => void;
   onToggleSidebar: () => void;
+  /** Return to the thread hub (hub-shell H0 — the workspace→hub door). */
+  onShowHub: () => void;
   onOpenCommandPalette: () => void;
   onActivateAgent: (tabId: number, leafId: number) => void;
   onActivateLocalAgent: () => void;
@@ -69,6 +72,7 @@ export function Header({
   onReorder,
   onOverrideLanguage,
   onToggleSidebar,
+  onShowHub,
   onOpenCommandPalette,
   onActivateAgent,
   onActivateLocalAgent,
@@ -112,6 +116,20 @@ export function Header({
       }`}
     >
       <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          onClick={onShowHub}
+          title="Back to threads"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 gap-1.5 rounded-md px-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <HugeiconsIcon
+            icon={DashboardCircleIcon}
+            size={16}
+            strokeWidth={1.75}
+          />
+          <span className="text-[13px] font-medium">Threads</span>
+        </Button>
         <Button
           onClick={onToggleSidebar}
           title="Toggle sidebar"
