@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { TranscriptEntry, TranscriptStatus } from "../lib/fleetTranscript";
 import { formatDuration, type TimelineRow, workingForLabel } from "./deriveRows";
+import { presentTool } from "./toolPresenter";
 
 // Dynamic import — a lazy boundary the eager-graph budget tracer respects — see
 // AssistantMarkdown.tsx's header for why the markdown stack can't be a static import here.
@@ -115,16 +116,25 @@ function ThinkingBlock({ entry }: { entry: TranscriptEntry }) {
 function SystemMessage({ entry }: { entry: TranscriptEntry }) {
   const text = entry.displayText ?? entry.text;
   const isPendingGate = entry.status === "running" && !!entry.pending;
+  // A gate the operator must resolve reads as a calm, actionable callout (a soft warning dot + a
+  // steady, non-italic line) — passive system notes stay quiet and italic. Tokens only.
   return (
     <div
       className={cn(
-        "rounded-md border px-2.5 py-1.5 text-[11.5px] italic leading-relaxed",
+        "flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-[11.5px] leading-relaxed",
         isPendingGate
-          ? "border-warning/40 bg-warning/10 text-warning-foreground"
-          : "border-transparent bg-transparent text-muted-foreground/70",
+          ? "border-warning/30 bg-warning/5 text-warning-foreground"
+          : "border-transparent bg-transparent italic text-muted-foreground/70",
       )}
     >
-      {text}
+      {isPendingGate && (
+        <span
+          className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warning"
+          role="img"
+          aria-label="needs you"
+        />
+      )}
+      <span className="min-w-0 flex-1">{text}</span>
     </div>
   );
 }
@@ -149,49 +159,110 @@ const TOOL_STATUS_DOT: Record<TranscriptStatus, string> = {
   cancelled: "bg-muted-foreground/40",
 };
 
+/** Strip the daemon's `▸ toolName: ` prefix off an entry's text to recover the bare intent — the
+ *  subject fallback for ACP-kind tools that arrive with no structured args (e.g. `▸ read: config.ts`
+ *  → `config.ts`). Returns "" when nothing meaningful remains. */
+function intentFromEntryText(text: string | undefined, name: string): string {
+  if (!text) return "";
+  let s = text.replace(/^\s*▸\s*/, "");
+  if (s.toLowerCase().startsWith(name.toLowerCase())) s = s.slice(name.length);
+  return s.replace(/^[\s:·-]+/, "").trim();
+}
+
+/** The raw args/result JSON — the ONLY place JSON.stringify is allowed, and only ever behind the
+ *  expand fold. */
+function rawArgsText(tool: TranscriptEntry["tool"]): string | undefined {
+  if (!tool) return undefined;
+  if (tool.argsText?.trim()) return tool.argsText;
+  if (tool.args !== undefined) {
+    try {
+      return JSON.stringify(tool.args, null, 2);
+    } catch {
+      return String(tool.args);
+    }
+  }
+  return undefined;
+}
+
 function ToolLine({ entry }: { entry: TranscriptEntry }) {
   const status: TranscriptStatus = entry.status ?? "ok";
-  const name = entry.tool?.name ?? "tool";
-  const summary =
-    entry.tool?.argsText ??
-    (entry.tool?.args !== undefined ? JSON.stringify(entry.tool.args) : undefined);
-  const result = entry.tool?.resultText ?? entry.tool?.partialText;
-  const isError = Boolean(entry.tool?.isError) || status === "error";
+  const tool = entry.tool;
+  const name = tool?.name ?? "tool";
+  const isError = Boolean(tool?.isError) || status === "error";
+  const [expanded, setExpanded] = useState(false);
+
+  const { verb, subject, detail } = tool
+    ? presentTool(tool)
+    : { verb: "Tool", subject: "", detail: undefined };
+  // Backfill a missing subject from the entry's intent text (ACP kinds carry it there, not in args).
+  const shownSubject = subject || intentFromEntryText(entry.displayText ?? entry.text, name);
+
+  const rawArgs = rawArgsText(tool);
+  const rawResult = tool?.resultText ?? tool?.partialText;
+  const canExpand = Boolean(rawArgs || rawResult);
+
+  const Row = canExpand ? "button" : "div";
 
   return (
-    <div className="flex flex-col gap-0.5 rounded-md px-2 py-1 text-[11.5px]">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-1 rounded-md px-2 py-1 text-[11.5px]">
+      <Row
+        {...(canExpand
+          ? {
+              type: "button" as const,
+              onClick: () => setExpanded((v) => !v),
+              "aria-expanded": expanded,
+            }
+          : {})}
+        className={cn(
+          "group flex w-full items-center gap-2 text-left",
+          canExpand && "cursor-pointer",
+        )}
+      >
         <span
           className={cn("size-1.5 shrink-0 rounded-full", TOOL_STATUS_DOT[status])}
           role="img"
           aria-label={status}
         />
         <HugeiconsIcon
-          icon={ToolsIcon}
+          icon={canExpand ? (expanded ? ArrowDown01Icon : ArrowRight01Icon) : ToolsIcon}
           size={12}
           strokeWidth={1.75}
-          className="shrink-0 text-muted-foreground"
+          className={cn(
+            "shrink-0 text-muted-foreground/60",
+            canExpand && "group-hover:text-foreground",
+          )}
         />
-        <span className="shrink-0 font-medium text-foreground">{name}</span>
-        {summary ? (
+        <span className="shrink-0 font-medium text-foreground">{verb}</span>
+        {shownSubject && (
           <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted-foreground">
-            {summary}
+            {shownSubject}
           </span>
-        ) : (
-          <span className="flex-1" />
         )}
-        {entry.tool?.durationMs != null && (
+        {!shownSubject && <span className="flex-1" />}
+        {detail && (
+          <span className="shrink-0 text-[10px] text-muted-foreground/60">{detail}</span>
+        )}
+        {tool?.durationMs != null && (
           <span className="shrink-0 text-[10px] text-muted-foreground/70">
-            {formatDuration(entry.tool.durationMs)}
+            {formatDuration(tool.durationMs)}
           </span>
         )}
         {isError && (
           <span className="shrink-0 text-[10px] font-medium text-destructive">failed</span>
         )}
-      </div>
-      {result && (
-        <div className="ml-5 line-clamp-3 font-mono text-[10.5px] text-muted-foreground">
-          {result}
+      </Row>
+      {expanded && canExpand && (
+        <div className="ml-5 flex flex-col gap-1.5">
+          {rawArgs && (
+            <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word rounded bg-muted/40 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+              {rawArgs}
+            </pre>
+          )}
+          {rawResult && (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-muted/40 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed text-muted-foreground">
+              {rawResult}
+            </pre>
+          )}
         </div>
       )}
     </div>
