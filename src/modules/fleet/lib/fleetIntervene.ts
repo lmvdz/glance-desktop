@@ -31,19 +31,21 @@ export interface WhyStopped {
   needsHuman: boolean;
 }
 
-/** Why a unit is where it is — the same wording the roster attention lane uses, expanded for detail. */
+/** Why a unit is where it is — the same wording the roster attention lane uses, expanded for detail.
+ *  Written from the operator's side of the screen (t3-face C11 copy pass): plain state names, no
+ *  process/dev jargon, and a next-step in the detail line wherever there's one to offer. */
 export function whyStopped(u: FleetUnit): WhyStopped {
   switch (u.status) {
     case "input":
       return {
         label: "Waiting for you",
-        detail: u.pending?.[0]?.title ?? "the unit asked for input",
+        detail: u.pending?.[0]?.title ?? "It asked a question and is waiting on your answer.",
         needsHuman: true,
       };
     case "error":
       return {
-        label: "Errored",
-        detail: u.error ?? "the unit hit a fatal error",
+        label: "Hit an error",
+        detail: u.error ?? "It stopped on an error. Steer it or take over to recover.",
         needsHuman: true,
       };
     case "working":
@@ -51,19 +53,19 @@ export function whyStopped(u: FleetUnit): WhyStopped {
     case "idle":
       return {
         label: "Idle",
-        detail: "turn finished — steer it with a new instruction",
+        detail: "It finished its turn. Send a new instruction to continue.",
         needsHuman: false,
       };
     case "starting":
       return {
-        label: "Starting",
-        detail: "process spawned, awaiting ready",
+        label: "Starting up",
+        detail: "It's spinning up and will pick up work shortly.",
         needsHuman: false,
       };
     case "stopped":
       return {
         label: "Stopped",
-        detail: "intentionally terminated",
+        detail: "You stopped this unit.",
         needsHuman: false,
       };
     default:

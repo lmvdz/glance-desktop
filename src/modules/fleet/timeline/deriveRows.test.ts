@@ -6,6 +6,7 @@ import {
   deriveTimelineRows,
   formatDuration,
   type TimelineRow,
+  workingForLabel,
 } from "./deriveRows";
 
 function e(
@@ -30,6 +31,17 @@ describe("formatDuration", () => {
   it("renders hours", () => {
     expect(formatDuration(3_661_000)).toBe("1h 1m");
     expect(formatDuration(3_600_000)).toBe("1h");
+  });
+});
+
+describe("workingForLabel — the live working timer (t3 voice)", () => {
+  it("phrases elapsed time as 'Working for Xm Ys', not raw seconds", () => {
+    expect(workingForLabel(134_000)).toBe("Working for 2m 14s");
+    expect(workingForLabel(45_000)).toBe("Working for 45s");
+    expect(workingForLabel(120_000)).toBe("Working for 2m");
+  });
+  it("never shows a negative clock for a startedAt in the future (clock skew)", () => {
+    expect(workingForLabel(-5_000)).toBe("Working for 0s");
   });
 });
 
