@@ -139,6 +139,9 @@ export type Preferences = {
   customInstructions: string;
   autostart: boolean;
   restoreWindowState: boolean;
+  /** Open (or focus) the fleet cockpit on launch when a daemon connection is
+   *  configured. Default on; the cockpit-first boot decision (App.tsx) reads it. */
+  openFleetOnLaunch: boolean;
   autocompleteEnabled: boolean;
   autocompleteTrigger: AutocompleteTrigger;
   autocompleteProvider: AutocompleteProviderId;
@@ -231,6 +234,7 @@ const KEY_EDITOR_FONT_SIZE = "editorFontSize";
 const KEY_CUSTOM_INSTRUCTIONS = "customInstructions";
 const KEY_AUTOSTART = "autostart";
 const KEY_RESTORE_WINDOW = "restoreWindowState";
+const KEY_OPEN_FLEET_ON_LAUNCH = "openFleetOnLaunch";
 export type AutocompleteTrigger = "auto" | "manual";
 
 const KEY_AUTOCOMPLETE_ENABLED = "autocompleteEnabled";
@@ -316,6 +320,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   customInstructions: "",
   autostart: false,
   restoreWindowState: true,
+  openFleetOnLaunch: true,
   autocompleteEnabled: false,
   autocompleteTrigger: "auto",
   autocompleteProvider: "cerebras",
@@ -497,6 +502,9 @@ export async function loadPreferences(): Promise<Preferences> {
     restoreWindowState:
       get<boolean>(KEY_RESTORE_WINDOW) ??
       DEFAULT_PREFERENCES.restoreWindowState,
+    openFleetOnLaunch:
+      get<boolean>(KEY_OPEN_FLEET_ON_LAUNCH) ??
+      DEFAULT_PREFERENCES.openFleetOnLaunch,
     autocompleteEnabled:
       get<boolean>(KEY_AUTOCOMPLETE_ENABLED) ??
       DEFAULT_PREFERENCES.autocompleteEnabled,
@@ -723,6 +731,10 @@ export async function setAutostart(value: boolean): Promise<void> {
 
 export async function setRestoreWindowState(value: boolean): Promise<void> {
   await writePref(KEY_RESTORE_WINDOW, value);
+}
+
+export async function setOpenFleetOnLaunch(value: boolean): Promise<void> {
+  await writePref(KEY_OPEN_FLEET_ON_LAUNCH, value);
 }
 
 export async function setAutocompleteTrigger(
@@ -975,6 +987,7 @@ export async function onPreferencesChange(
     [KEY_CUSTOM_INSTRUCTIONS]: "customInstructions",
     [KEY_AUTOSTART]: "autostart",
     [KEY_RESTORE_WINDOW]: "restoreWindowState",
+    [KEY_OPEN_FLEET_ON_LAUNCH]: "openFleetOnLaunch",
     [KEY_AUTOCOMPLETE_ENABLED]: "autocompleteEnabled",
     [KEY_AUTOCOMPLETE_TRIGGER]: "autocompleteTrigger",
     [KEY_AUTOCOMPLETE_PROVIDER]: "autocompleteProvider",
