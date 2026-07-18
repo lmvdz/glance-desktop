@@ -26,6 +26,54 @@ Until the fleet module is the primary surface (meta-plan Epic M decides hard div
 - Every PR attaches `git diff --stat upstream/main` so the touch surface stays auditable.
 - No public CI, no visibility change — both are Lars's calls.
 
+## t3face skin substrate (plans/t3-face 01/02)
+
+The app is skinned in t3code's (pingdotgg/t3code, MIT) visual system: derived-alpha
+palette, DM Sans Variable, duty-cycled status animations, surface grain, composer
+glass, overlay scrollbars, and the `.chat-markdown` typography system. Almost all of
+it lives in the new, fully additive `src/styles/t3face.css` (MIT header inside the
+file). Three upstream files could not stay untouched — Tailwind v4's `@theme` and
+`--alpha()` are only processed in the CSS graph reachable from the file containing
+`@import "tailwindcss"`, and font utilities bake a literal family at compile time —
+so token/font *registration* had to land in `globals.css`'s existing `@theme inline`
+block (kept minimal and commented; see the block itself for the "why here, not in
+t3face.css" note). The theme engine (`src/modules/theme/{types,applyTheme,
+validateTheme}.ts`) also carries the `warning`/`info`/`success`/`pending` (+
+`-foreground`) status keys so non-default themes can override any subset — this
+makes `applyTheme.ts` and `validateTheme.ts` **permanent conflict files** going
+forward (they were pristine vs. upstream before this); `types.ts` was already
+fork-diverged. Both are tracked in `scripts/upstream-drift.sh`'s `REG_POINTS`.
+
+### Diverged-set additions
+
+- `src/styles/globals.css` — `@theme inline` gained the font-sans swap + 8 status
+  color registrations + 3 animation names (already fork-diverged; this widens the
+  existing conflict surface, doesn't create a new one).
+- `components.json` — `tailwind.css` now points at the real Tailwind root
+  (`src/styles/globals.css`); it previously referenced a nonexistent `src/App.css`.
+- `src/main.tsx` / `src/settings/main.tsx` — one new import each
+  (`./styles/t3face.css`, immediately after `globals.css`).
+- `src/modules/theme/applyTheme.ts`, `src/modules/theme/validateTheme.ts` — newly
+  diverged (see above); `src/modules/theme/types.ts` — widened.
+
+### Skin-coverage manifest
+
+Upstream surfaces t3face intentionally re-skins (screenshot-diff these, both
+light and dark, after every rebase — see the runbook step below):
+
+- **Editor chrome** — CodeMirror gutters/panels, the diff pane, tab strip icons.
+- **Terminal** — xterm.js chrome (background/foreground/cursor/selection derive
+  from the palette; ANSI colors are untouched).
+- **Settings window** — a second real webview entrypoint (`src/settings/main.tsx`);
+  easy to skin half of the app and miss this one.
+- **Spaces / tab bar** — the space switcher and tab strip surfaces.
+- **Dialogs / popovers / menus** — anything using `.surface-grain` (floats above
+  the body, needs the grain opted in explicitly) plus the composer glass shell.
+- **Scrollbars** — the global 6px overlay treatment and the `.chat-markdown`/
+  tooltip thin-scrollbar variants; verify upstream's `.no-scrollbar(-deep)` and
+  xterm/CodeMirror scrollbar opt-outs still win (they're selector-scoped at a
+  higher specificity than the generic override on purpose).
+
 ## Rebase runbook
 
 **Never rebase blind — read the forecast first.** `scripts/upstream-drift.sh` (it fetches `upstream` itself) prints how far behind we are and the CONFLICT FORECAST: the exact files a rebase will make you resolve by hand (the set both we and upstream changed since the common base). It also flags when upstream touched a fleet-module **registration point** (`App.tsx`, `WorkspaceSurface.tsx`, `command-palette/commands.ts`, `spaces/serialize.ts`, `tabs/{index,lib/useTabs,lib/tabLabel}`, `settings/*`) — the additive seams most likely to collide. Exit 0 = clean; exit 1 = conflicts likely. A weekly Action (`.github/workflows/upstream-drift.yml`) runs it and keeps one living **"Upstream drift tracker"** issue current; run it on demand from the Actions tab (`workflow_dispatch`).
@@ -40,7 +88,12 @@ Steps:
 2. `git checkout -b rebase/YYYY-MM-DD && git rebase upstream/main` — on a branch, **never directly on `main`**.
 3. Resolve conflicts (should be confined to the registration points if the discipline held). `git rebase --continue`.
 4. Run the full gate (below): `pnpm lint && pnpm check-types && pnpm vitest run && pnpm build && (cd src-tauri && cargo check)`.
-5. Fast-forward `main` via PR.
+5. **Screenshot-diff the skin-coverage manifest** (t3face, both light and dark
+   mode): editor chrome, terminal, settings window, spaces/tab bar, dialogs.
+   Upstream additions in these surfaces land unstyled (raw upstream colors)
+   until t3face's selectors are extended to cover them — a rebase is the
+   moment new unstyled surfaces are most likely to slip in unnoticed.
+6. Fast-forward `main` via PR.
 
 Escape hatch:
 - If a rebase costs **more than a day**, record why in a dated line here. **Two** such events → bring the hard-divergence decision to Lars (per the meta-plan: once the fleet module is the primary surface, hard divergence is acceptable).

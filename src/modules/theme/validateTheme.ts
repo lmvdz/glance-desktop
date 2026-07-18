@@ -19,6 +19,10 @@ const COLOR_KEYS: readonly (keyof ThemeColors)[] = [
   "sidebarAccent", "sidebarAccentForeground",
   "sidebarBorder", "sidebarRing",
   "radius",
+  "warning", "warningForeground",
+  "info", "infoForeground",
+  "success", "successForeground",
+  "pending", "pendingForeground",
 ];
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
