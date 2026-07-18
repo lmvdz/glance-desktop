@@ -8,21 +8,22 @@
 
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { FleetStatus } from "../lib/fleetRoster";
+import type { LadderPriority } from "../lib/fleetLadder";
 import { RollupDot } from "./AttentionPill";
 
 export function GroupHeader({
   label,
   count,
   collapsed,
-  rollupStatus,
+  rollupPriority,
   onToggle,
 }: {
   label: string;
   count: number;
   collapsed: boolean;
-  /** Undefined for an adopt-only group — nothing to roll up, so the chevron shows plain. */
-  rollupStatus?: FleetStatus;
+  /** The group's most-urgent daemon tier (`maxLadderPriority`); undefined for an adopt-only group —
+   *  nothing to roll up, so the chevron shows plain. */
+  rollupPriority?: LadderPriority;
   onToggle: () => void;
 }) {
   return (
@@ -33,16 +34,16 @@ export function GroupHeader({
       className="group/project-header relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring"
     >
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-        {rollupStatus && (
+        {rollupPriority && (
           <span className="absolute inset-0 flex items-center justify-center opacity-100 transition-opacity duration-150 group-hover/project-header:opacity-0">
-            <RollupDot status={rollupStatus} />
+            <RollupDot priority={rollupPriority} />
           </span>
         )}
         <HugeiconsIcon
           icon={ArrowRight01Icon}
           size={13}
           className={`absolute inset-0 m-auto shrink-0 text-muted-foreground/70 transition-all duration-150 ${
-            rollupStatus
+            rollupPriority
               ? "opacity-0 group-hover/project-header:opacity-100"
               : "opacity-100"
           } ${collapsed ? "" : "rotate-90"}`}
