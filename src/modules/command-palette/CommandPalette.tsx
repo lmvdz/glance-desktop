@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
+import { type FabricHit, useFleetConnection } from "@/modules/fleet";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
   getBindingTokens,
@@ -26,12 +27,17 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { COMMAND_GROUPS } from "./commands";
 import { useCommandHistory } from "./hooks/useCommandHistory";
 import {
   CONTENT_SEARCH_MIN_QUERY,
   useContentSearch,
 } from "./hooks/useContentSearch";
+import {
+  FABRIC_SEARCH_MIN_QUERY,
+  useFabricSearch,
+} from "./hooks/useFabricSearch";
 import { fuzzyBest } from "./lib/fuzzy";
 import { MODE_HINTS, parseQuery } from "./lib/mode";
 import { mruRank, mruSnapshot, recordUse } from "./lib/mru";
@@ -78,6 +84,11 @@ export function CommandPalette({
     parsed.term,
     open && !inThemes && parsed.mode === "history",
   );
+  const fabric = useFabricSearch(
+    parsed.term,
+    open && !inThemes && parsed.mode === "fabric",
+  );
+  const activeDaemonId = useFleetConnection((s) => s.activeId);
 
   const mru = useMemo(() => (open ? mruSnapshot() : {}), [open]);
 
@@ -161,6 +172,7 @@ export function CommandPalette({
       if (item.id === "theme.pick") return enterThemes();
       if (item.id === "search.content") return setQuery("#");
       if (item.id === "history.open") return setQuery(">");
+      if (item.id === "fabric.search") return setQuery("@");
       recordUse(item.id);
       runAfterClose(item.run);
     },
@@ -180,6 +192,23 @@ export function CommandPalette({
       runAfterClose(() => insertCommand(cmd));
     },
     [insertCommand, runAfterClose],
+  );
+
+  // Row action v1: copy the fact's pointer (its backend ref, falling back to its id) so the
+  // operator can paste it into a steer/note. TODO(comprehension): a later concern will add
+  // per-type "jump into a comprehension view" (open the decision/digest/failure detail); this
+  // copy is the interim, always-available action so the row is never dead chrome.
+  const copyFabricPointer = useCallback(
+    (hit: FabricHit) => {
+      const pointer = hit.ref ?? hit.id;
+      runAfterClose(() => {
+        void navigator.clipboard
+          ?.writeText(pointer)
+          .then(() => toast.success("Copied pointer", { description: hit.title }))
+          .catch(() => toast.error("Couldn't copy to clipboard"));
+      });
+    },
+    [runAfterClose],
   );
 
   const commitTheme = useCallback(
@@ -208,7 +237,9 @@ export function CommandPalette({
       ? "Find text in files..."
       : parsed.mode === "history"
         ? "Search command history..."
-        : "Type a command, > for history, # to find in files";
+        : parsed.mode === "fabric"
+          ? "Search the fleet knowledge base..."
+          : "Type a command, > history, # files, @ knowledge base";
 
   return (
     <CommandDialog
@@ -329,6 +360,30 @@ export function CommandPalette({
                   </AsyncBody>
                 )}
               </CommandGroup>
+            ) : parsed.mode === "fabric" ? (
+              <CommandGroup heading="Knowledge base">
+                {!activeDaemonId ? (
+                  <StatusItem label="Connect a daemon in Settings → Fleet" />
+                ) : parsed.term.length < FABRIC_SEARCH_MIN_QUERY ? (
+                  <StatusItem label="Type at least 2 characters" />
+                ) : (
+                  <AsyncBody
+                    loading={fabric.loading}
+                    error={fabric.error}
+                    empty={fabric.results.length === 0}
+                    emptyLabel="No matches"
+                    onRetry={fabric.retry}
+                  >
+                    {fabric.results.map((hit) => (
+                      <FabricRow
+                        key={`${hit.type}:${hit.id}`}
+                        hit={hit}
+                        onSelect={() => copyFabricPointer(hit)}
+                      />
+                    ))}
+                  </AsyncBody>
+                )}
+              </CommandGroup>
             ) : parsed.mode === "history" ? (
               <CommandGroup heading="Command history">
                 {!insertCommand ? (
@@ -437,6 +492,60 @@ function ActionItem({
         >
           {rightLabel}
         </CommandShortcut>
+      ) : null}
+    </CommandItem>
+  );
+}
+
+// Each KB fact type maps to a t3 status-token family (registered in t3face.css: --info/--success/
+// --warning/--pending/--destructive) — never a hardcoded color. Unknown types fall back to muted.
+const FABRIC_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+  decision: { label: "decision", cls: "border-info/40 bg-info/10 text-info-foreground" },
+  "hot-area": { label: "hot file", cls: "border-warning/40 bg-warning/10 text-warning-foreground" },
+  digest: { label: "digest", cls: "border-border/60 bg-muted/50 text-muted-foreground" },
+  agent: { label: "agent", cls: "border-success/40 bg-success/10 text-success-foreground" },
+  scout: { label: "scout", cls: "border-pending/40 bg-pending/10 text-pending-foreground" },
+  lease: { label: "lease", cls: "border-warning/40 bg-warning/10 text-warning-foreground" },
+  failure: { label: "failure", cls: "border-destructive/40 bg-destructive/10 text-destructive" },
+  symptom: { label: "symptom", cls: "border-destructive/40 bg-destructive/10 text-destructive" },
+  episode: { label: "episode", cls: "border-info/40 bg-info/10 text-info-foreground" },
+  answer: { label: "answer", cls: "border-success/40 bg-success/10 text-success-foreground" },
+};
+
+function FabricRow({
+  hit,
+  onSelect,
+}: {
+  hit: FabricHit;
+  onSelect: () => void;
+}) {
+  const badge = FABRIC_TYPE_BADGE[hit.type] ?? {
+    label: hit.type,
+    cls: "border-border/60 bg-muted/50 text-muted-foreground",
+  };
+  return (
+    <CommandItem
+      value={`fabric:${hit.type}:${hit.id}`}
+      onSelect={onSelect}
+      className="items-start text-[12.5px]"
+    >
+      <span
+        className={`mt-0.5 shrink-0 rounded-full border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide ${badge.cls}`}
+      >
+        {badge.label}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate">{hit.title}</span>
+        {hit.snippet ? (
+          <span className="truncate text-[11px] font-normal text-muted-foreground">
+            {hit.snippet}
+          </span>
+        ) : null}
+      </span>
+      {hit.repo ? (
+        <span className="ml-auto max-w-40 shrink-0 truncate text-[11px] font-normal text-muted-foreground">
+          {hit.repo}
+        </span>
       ) : null}
     </CommandItem>
   );
