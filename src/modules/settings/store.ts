@@ -15,6 +15,8 @@ import {
   WHISPERCPP_DEFAULT_BASE_URL,
 } from "@/modules/ai/config";
 import { migrateLazyStoreOnce } from "@/modules/migrations/lazyStoreMigration";
+import { createMigrationGate } from "@/modules/migrations/migrationGate";
+import { planT3faceThemeMigration } from "@/modules/migrations/t3faceThemeMigration";
 import type { KeyBinding, ShortcutId } from "@/modules/shortcuts/shortcuts";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { LazyStore } from "@tauri-apps/plugin-store";
@@ -121,6 +123,12 @@ export const EDITOR_THEME_LABELS: Record<EditorThemeId, string> = {
 export type Preferences = {
   theme: ThemePref;
   themeId: string;
+  /** The `themeId` selected before the one-time t3-face reset migration ran
+   *  (see `migrateT3faceThemeOnce`). `null` when the migration never had to
+   *  reset anything (fresh install, or already on the default). Kept purely
+   *  for reference / an opt-back affordance — the old theme itself is never
+   *  deleted, only the selection was reset. */
+  themeIdBeforeT3face: string | null;
   backgroundKind: BackgroundKind;
   backgroundImageId: string | null;
   backgroundOpacity: number;
@@ -209,6 +217,10 @@ const STORE_PATH = "glance-settings.json";
 const OLD_STORE_PATH = "terax-settings.json";
 const KEY_THEME = "theme";
 const KEY_THEME_ID = "themeId";
+/** One-time flag: the t3-face theme-reset migration has run. */
+const KEY_T3FACE_THEME_RESET = "t3faceThemeReset";
+/** Records the pre-migration `themeId` for opt-back. */
+const KEY_THEME_ID_BEFORE_T3FACE = "themeIdBeforeT3face";
 const KEY_BG_KIND = "backgroundKind";
 const KEY_BG_IMAGE_ID = "backgroundImageId";
 const KEY_BG_OPACITY = "backgroundOpacity";
@@ -293,6 +305,7 @@ export const TERMINAL_SCROLLBACK_PRESETS = [
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: "system",
   themeId: DEFAULT_THEME_ID,
+  themeIdBeforeT3face: null,
   backgroundKind: "none",
   backgroundImageId: null,
   backgroundOpacity: 0.5,
@@ -383,8 +396,63 @@ export function resolveThemeId(stored: string | undefined): string {
   return stored;
 }
 
+/**
+ * One-time "t3-face theme reset" migration (see
+ * `@/modules/migrations/t3faceThemeMigration` for the pure decision and the
+ * why). Inline theme variables beat the `t3face.css` stylesheet, so any
+ * persisted non-default `themeId` fully suppresses the new skin. On the first
+ * boot after this ships, reset the SELECTED theme back to the default so the
+ * t3-face look shows, recording the previous choice in
+ * `KEY_THEME_ID_BEFORE_T3FACE` for opt-back. Custom themes are never deleted —
+ * only the selection changes — so the old theme stays re-pickable in
+ * Settings → Themes, and once re-picked the flag keeps this from ever
+ * resetting it again.
+ *
+ * Memoized as an in-flight promise per process (via `createMigrationGate`),
+ * exactly like `migrateLazyStoreOnce`, so concurrent boots in one window share
+ * a single attempt. The store's `t3faceThemeReset` flag is the durable guard
+ * across processes/windows. Must run AFTER `ensureMigrated` (so legacy store
+ * data has already been copied in) and BEFORE `loadPreferences` reads the
+ * selection, which is why `loadPreferences` awaits it.
+ */
+async function runT3faceThemeReset(): Promise<void> {
+  const alreadyMigrated =
+    (await store.get<boolean>(KEY_T3FACE_THEME_RESET)) === true;
+  const current = resolveThemeId(await store.get<string>(KEY_THEME_ID));
+  const plan = planT3faceThemeMigration(
+    alreadyMigrated,
+    current,
+    DEFAULT_THEME_ID,
+  );
+  if (!plan.shouldStampFlag) return;
+  if (plan.shouldReset) {
+    await store.set(KEY_THEME_ID_BEFORE_T3FACE, plan.themeIdBefore);
+    await store.set(KEY_THEME_ID, DEFAULT_THEME_ID);
+  }
+  await store.set(KEY_T3FACE_THEME_RESET, true);
+  await store.save();
+  // Broadcast the selection change so any already-open window (its own
+  // fast-path shadow + provider state) updates live, mirroring `writePref`.
+  // `LazyStore.onChange` covers same-window listeners; this event covers the
+  // rest. Fresh boots also self-heal via their own `loadPreferences`.
+  if (plan.shouldReset) {
+    await emit(PREFS_CHANGED_EVENT, {
+      key: KEY_THEME_ID,
+      value: DEFAULT_THEME_ID,
+    });
+  }
+}
+
+const t3faceThemeGate = createMigrationGate(runT3faceThemeReset);
+
+/** Run the one-time t3-face theme reset (idempotent, memoized per process). */
+export function migrateT3faceThemeOnce(): Promise<void> {
+  return t3faceThemeGate();
+}
+
 export async function loadPreferences(): Promise<Preferences> {
   await ensureMigrated();
+  await migrateT3faceThemeOnce();
   // Single IPC roundtrip — fetching keys individually fans out to one
   // `plugin:store|get` per setting and is the dominant boot cost.
   const entries = await store.entries();
@@ -393,6 +461,9 @@ export async function loadPreferences(): Promise<Preferences> {
   return {
     theme: get<ThemePref>(KEY_THEME) ?? DEFAULT_PREFERENCES.theme,
     themeId: resolveThemeId(get<string>(KEY_THEME_ID)),
+    themeIdBeforeT3face:
+      get<string | null>(KEY_THEME_ID_BEFORE_T3FACE) ??
+      DEFAULT_PREFERENCES.themeIdBeforeT3face,
     backgroundKind:
       get<BackgroundKind>(KEY_BG_KIND) ?? DEFAULT_PREFERENCES.backgroundKind,
     backgroundImageId:
@@ -893,6 +964,7 @@ export async function onPreferencesChange(
   const map: Record<string, PrefKey> = {
     [KEY_THEME]: "theme",
     [KEY_THEME_ID]: "themeId",
+    [KEY_THEME_ID_BEFORE_T3FACE]: "themeIdBeforeT3face",
     [KEY_BG_KIND]: "backgroundKind",
     [KEY_BG_IMAGE_ID]: "backgroundImageId",
     [KEY_BG_OPACITY]: "backgroundOpacity",
