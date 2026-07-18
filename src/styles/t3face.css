@@ -267,6 +267,24 @@ body {
 }
 
 /* ---------------------------------------------------------------------- *
+ * Surface subheader — t3code's panel-header band (a fixed-height row that
+ * sits above a scrolling body: h-10, a hairline bottom rule, an opaque
+ * background so the grained body scrolls cleanly beneath it). Every fleet
+ * panel header (thread spine, intervene detail) wears this so the cockpit's
+ * headers read as one consistent chrome element rather than N ad-hoc bars.
+ * Idiom from pingdotgg/t3code (MIT); values re-authored against glance's
+ * own tokens. Padding/flex content is applied per-header via utilities so a
+ * header can still lay out its own title/actions row. */
+.surface-subheader {
+  display: flex;
+  height: 2.5rem; /* h-10 */
+  flex-shrink: 0;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background-color: var(--background);
+}
+
+/* ---------------------------------------------------------------------- *
  * Composer glass — one shared frosted-chrome treatment for composer
  * shells (the docked AI input bar, the fleet steer composer). Ported as
  * plain classes (t3's @layer components equivalents are Tailwind-layer
@@ -1039,4 +1057,20 @@ html.dark *::-webkit-scrollbar-thumb:hover {
 .t3face-flat .skeleton {
   background-attachment: scroll;
   animation: none;
+}
+
+/* Reduced-motion: concern 11 promotes the skeleton sweep + duty-cycled status
+   pulses onto more surfaces (unit rows, transcript, diff loaders), so honor an
+   operator who's asked the OS to still motion. The skeleton falls back to its
+   static `bg-muted` base (no sweep); the status dots hold at full opacity
+   rather than pulsing. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    background-image: none;
+    animation: none;
+  }
+  .animate-status-pulse,
+  .animate-status-ping {
+    animation: none;
+  }
 }

@@ -1,4 +1,7 @@
+import { Message01Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FleetEmpty } from "./EmptyState";
 import type { TranscriptEntry } from "./lib/fleetTranscript";
 import { Minimap } from "./timeline/Minimap";
 import { deriveMinimapDots, deriveTimelineRows } from "./timeline/deriveRows";
@@ -13,9 +16,33 @@ import { TimelineRowView } from "./timeline/TimelineRowView";
 // for provenance); this component owns only expansion state, auto-scroll, and scroll-to-message.
 //
 // PUBLIC INTERFACE IS LOAD-BEARING: IntervenePane.tsx renders `<ConversationView entries={...} />`
-// and must keep working with zero edits — this rewrite only touches internals.
+// and must keep working — `loading` is an ADDITIVE optional prop (t3-face C11), so callers that
+// don't pass it behave exactly as before.
 
-export function ConversationView({ entries }: { entries: TranscriptEntry[] }) {
+/** Ghost turn-rows while the first transcript poll is in flight — the unison skeleton sweep, so a
+ *  cold-opened unit paints the conversation's shape instead of a blank pane (t3-face C11). */
+function TranscriptSkeleton() {
+  return (
+    <div className="flex flex-col gap-3 py-2" aria-hidden>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-2/3 rounded-2xl" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-4 w-11/12 rounded" />
+        <Skeleton className="h-4 w-4/5 rounded" />
+        <Skeleton className="h-4 w-3/5 rounded" />
+      </div>
+    </div>
+  );
+}
+
+export function ConversationView({
+  entries,
+  loading = false,
+}: {
+  entries: TranscriptEntry[];
+  loading?: boolean;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
@@ -62,10 +89,14 @@ export function ConversationView({ entries }: { entries: TranscriptEntry[] }) {
   };
 
   if (entries.length === 0) {
+    if (loading) return <TranscriptSkeleton />;
     return (
-      <div className="py-6 text-center text-[11px] text-muted-foreground/70">
-        No conversation yet — send an instruction below.
-      </div>
+      <FleetEmpty
+        compact
+        icon={Message01Icon}
+        title="No messages yet"
+        description="Send an instruction below to start this unit's first turn."
+      />
     );
   }
 

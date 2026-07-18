@@ -128,7 +128,7 @@ describe("ladderMeta — the tier → t3 status-token mapping", () => {
   it("resolves to token utilities, never raw palette classes (theme-repaintable)", () => {
     for (const p of LADDER_RANK) {
       const dot = ladderMeta(p).dot;
-      // Token utilities only — no raw tailwind palette like bg-red-500 / bg-amber-400 etc.
+      // Token utilities only — never a raw numbered tailwind palette class (see the regex below).
       expect(dot).not.toMatch(
         /bg-(red|amber|blue|emerald|violet|sky|indigo|gray|slate)-\d/,
       );

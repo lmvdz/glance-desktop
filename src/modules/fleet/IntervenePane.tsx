@@ -9,6 +9,8 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ComposerShell } from "@/components/composer/ComposerShell";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmPill } from "./ConfirmPill";
 import { ConversationView } from "./ConversationView";
 import {
   DiffFile,
@@ -93,6 +95,7 @@ export function IntervenePane({
   const [takeover, setTakeover] = useState<TakeoverState>(IDLE_TAKEOVER);
 
   const entries = useFleetTranscript((s) => s.entries);
+  const transcriptLoaded = useFleetTranscript((s) => s.loaded);
   const startTranscript = useFleetTranscript((s) => s.start);
   const stopTranscript = useFleetTranscript((s) => s.stop);
   const addOptimistic = useFleetTranscript((s) => s.addOptimistic);
@@ -233,11 +236,11 @@ export function IntervenePane({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-2">
+      <header className="surface-subheader gap-2 px-3">
         <button
           type="button"
           onClick={onBack}
-          title="Back to roster"
+          title="Back to the fleet"
           className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           <HugeiconsIcon icon={ArrowLeft02Icon} size={16} />
@@ -245,8 +248,8 @@ export function IntervenePane({
         <span className="truncate text-sm font-semibold text-foreground">
           {unit.name}
         </span>
-        <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground/70">
-          {unit.status}
+        <span className="shrink-0 text-[11px] text-muted-foreground/70">
+          {why.label}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           {unit.worktree &&
@@ -263,18 +266,34 @@ export function IntervenePane({
                   ? "Handing back…"
                   : "Hand back"}
               </button>
+            ) : takeover.phase === "taking-over" ? (
+              <button
+                type="button"
+                disabled
+                className="flex h-7 cursor-not-allowed items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] text-foreground/75 opacity-50"
+              >
+                <HugeiconsIcon icon={UserSharingIcon} size={13} />
+                Taking over…
+              </button>
+            ) : unit.status === "working" ? (
+              // Destructive: taking over a WORKING unit interrupts its in-flight turn — two-step
+              // confirm so a stray click can't throw away work (t3-face C11).
+              <ConfirmPill
+                icon={UserSharingIcon}
+                label="Take over"
+                confirmLabel="Interrupt & take over?"
+                onConfirm={() => void takeOver()}
+                title="Pause the agent and drive this worktree yourself"
+              />
             ) : (
               <button
                 type="button"
                 onClick={() => void takeOver()}
-                disabled={takeover.phase === "taking-over"}
                 title="Pause the agent and drive this worktree yourself"
-                className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] text-foreground/75 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] text-foreground/75 hover:bg-accent"
               >
                 <HugeiconsIcon icon={UserSharingIcon} size={13} />
-                {takeover.phase === "taking-over"
-                  ? "Taking over…"
-                  : "Take over"}
+                Take over
               </button>
             ))}
           {canOpen && unit.worktree && (
@@ -357,12 +376,14 @@ export function IntervenePane({
             {diffErr ? (
               <div className="text-[11px] text-destructive">{diffErr}</div>
             ) : diff === null ? (
-              <div className="text-[11px] text-muted-foreground/70">
-                Loading diff…
+              <div className="flex flex-col gap-1.5" aria-hidden>
+                <Skeleton className="h-4 w-1/3 rounded" />
+                <Skeleton className="h-4 w-full rounded" />
+                <Skeleton className="h-4 w-11/12 rounded" />
               </div>
             ) : diff.length === 0 ? (
               <div className="text-[11px] text-muted-foreground/70">
-                No uncommitted changes.
+                No uncommitted changes in the worktree.
               </div>
             ) : (
               diff.map((fd) => (
@@ -382,7 +403,7 @@ export function IntervenePane({
         <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
           Conversation
         </div>
-        <ConversationView entries={entries} />
+        <ConversationView entries={entries} loading={!transcriptLoaded} />
       </div>
 
       {/* Steer composer — t3 glass shell shared with the AI chat composer (see

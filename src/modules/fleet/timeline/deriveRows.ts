@@ -96,6 +96,12 @@ export function formatDuration(ms: number): string {
   return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`;
 }
 
+/** The live working-timer label — "Working for 2m 14s" (t3 voice), not raw seconds. Shares
+ *  `formatDuration` so an in-flight turn and a finished fold read the same units. */
+export function workingForLabel(elapsedMs: number): string {
+  return `Working for ${formatDuration(elapsedMs)}`;
+}
+
 interface IndexedEntry {
   entry: TranscriptEntry;
   arrayIndex: number;

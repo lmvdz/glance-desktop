@@ -6,9 +6,15 @@
 // concern 06) — the render tree is unchanged from concern 05; only the DATA SOURCE moved off the
 // deleted client ranking.
 
-import { Alert02Icon, DashboardCircleIcon } from "@hugeicons/core-free-icons";
+import {
+  Alert02Icon,
+  DashboardCircleIcon,
+  InboxIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FleetEmpty } from "../EmptyState";
 import { ladderReason, needsHuman } from "../lib/fleetLadder";
 import {
   canOpenUnitWorktree,
@@ -33,6 +39,24 @@ const CONN_LABEL: Record<RosterConnection, { text: string; cls: string }> = {
   reconnecting: { text: "reconnecting…", cls: "text-warning" },
   unauthorized: { text: "unauthorized", cls: "text-warning" },
 };
+
+/** Ghost unit rows while the first roster fetch is in flight — the unison skeleton sweep (t3-face
+ *  C11), so a cold spine paints its shape immediately instead of a blank column or a "Loading…" line. */
+function SpineSkeleton() {
+  return (
+    <div className="flex flex-col gap-1 px-2 py-1" aria-hidden>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="flex h-7 items-center gap-2 px-2">
+          <Skeleton className="size-1.5 rounded-full" />
+          <Skeleton
+            className="h-3 rounded"
+            style={{ width: `${70 - i * 8}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function ThreadSpine() {
   const { units, connection, start, stop } = useFleetRoster();
@@ -95,7 +119,7 @@ export function ThreadSpine() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-3 py-2">
+      <header className="surface-subheader justify-between px-3">
         <div className="flex items-center gap-2">
           <HugeiconsIcon
             icon={DashboardCircleIcon}
@@ -122,11 +146,16 @@ export function ThreadSpine() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {units.length === 0 && adoptable.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-center text-[12px] text-muted-foreground/70">
-            {connection === "connecting"
-              ? "Loading roster…"
-              : "No units — the fleet is idle."}
-          </div>
+          connection === "connecting" ? (
+            <SpineSkeleton />
+          ) : (
+            <FleetEmpty
+              compact
+              icon={InboxIcon}
+              title="No units running"
+              description="When you start a unit or the fleet picks up work, it lands here."
+            />
+          )
         ) : (
           <div className="flex flex-col gap-0.5">
             {groups.map((g) => {

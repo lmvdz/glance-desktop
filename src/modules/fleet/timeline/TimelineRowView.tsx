@@ -22,7 +22,7 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { cn } from "@/lib/utils";
 import type { TranscriptEntry, TranscriptStatus } from "../lib/fleetTranscript";
-import { formatDuration, type TimelineRow } from "./deriveRows";
+import { formatDuration, type TimelineRow, workingForLabel } from "./deriveRows";
 
 // Dynamic import — a lazy boundary the eager-graph budget tracer respects — see
 // AssistantMarkdown.tsx's header for why the markdown stack can't be a static import here.
@@ -252,7 +252,7 @@ function TurnFoldRowView({
   );
 }
 
-/** Staggered pulse dots + a "Working for Xs" timer that ticks WITHOUT a React commit every
+/** Staggered pulse dots + a "Working for 2m 14s" timer that ticks WITHOUT a React commit every
  *  second — the timer span's textContent is mutated directly through a ref on a 1s interval, so a
  *  long-running turn never re-renders the whole timeline once a second just to update a clock. */
 function WorkingRowView({ startedAt }: { startedAt: number | null }) {
@@ -263,8 +263,7 @@ function WorkingRowView({ startedAt }: { startedAt: number | null }) {
     const tick = () => {
       const el = timerRef.current;
       if (!el) return;
-      const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-      el.textContent = `Working for ${secs}s`;
+      el.textContent = workingForLabel(Date.now() - startedAt);
     };
     tick();
     const id = window.setInterval(tick, 1000);
