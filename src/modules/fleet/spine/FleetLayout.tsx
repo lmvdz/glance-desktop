@@ -42,6 +42,23 @@ export function FleetLayout() {
     if (selectedId && !selected && units.length > 0) select(null);
   }, [selectedId, selected, units.length, select]);
 
+  // Mark-seen on focus (t3-face concern 07, step 6): opening a unit writes `lastVisitedAt` to its
+  // OWN daemon, so a `completed-unseen` rung resolves to `idle` on the next poll — for THIS viewer
+  // and any second client. The write lives on the daemon (concern 06's per-viewer seen store), never
+  // a local store. Fire-and-forget; keyed on the unit's identity (not the polled object) so it fires
+  // once per selection change, not every ~2s roster poll. `selectedUnitId`/`selectedDaemonId` are
+  // read here rather than closing over `selected` so the effect's deps stay primitive + stable.
+  const selectedUnitId = selected?.id;
+  const selectedDaemonId = selected?.daemonId;
+  useEffect(() => {
+    if (!selectedUnitId || !selectedDaemonId) return;
+    void useFleetConnection
+      .getState()
+      .client(selectedDaemonId)
+      .then((c) => c.markUnitSeen(selectedUnitId))
+      .catch(() => {});
+  }, [selectedUnitId, selectedDaemonId]);
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       <div className="w-64 shrink-0 border-r border-border/60 sm:w-72">
