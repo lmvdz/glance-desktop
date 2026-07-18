@@ -32,27 +32,27 @@ describe("buildSpineGroups", () => {
     expect(app?.daemonGroups.map((d) => d.daemonId).sort()).toEqual(["d1", "d2"]);
   });
 
-  it("orders project groups by roll-up rank, then alphabetically", () => {
+  it("orders project groups by the server roll-up tier, then alphabetically", () => {
     const units = [
-      unit({ id: "1", name: "a", status: "idle", repo: "/r/zzz", repoName: "zzz" }),
-      unit({ id: "2", name: "b", status: "input", repo: "/r/aaa", repoName: "aaa" }), // needs you
-      unit({ id: "3", name: "c", status: "idle", repo: "/r/bbb", repoName: "bbb" }),
+      unit({ id: "1", name: "a", status: "idle", repo: "/r/zzz", repoName: "zzz", ladderPriority: "idle" }),
+      unit({ id: "2", name: "b", status: "input", repo: "/r/aaa", repoName: "aaa", ladderPriority: "awaiting-input" }), // needs you
+      unit({ id: "3", name: "c", status: "idle", repo: "/r/bbb", repoName: "bbb", ladderPriority: "idle" }),
     ];
     const groups = buildSpineGroups(units, [], null);
-    // The input-blocked project ("aaa") outranks idle projects regardless of alpha order.
+    // The awaiting-input project ("aaa") outranks idle projects regardless of alpha order.
     expect(groups[0].projectKey).toBe("aaa");
     expect(groups[0].hasAttention).toBe(true);
     // Remaining idle projects fall back to alphabetical.
     expect(groups.slice(1).map((g) => g.projectKey)).toEqual(["bbb", "zzz"]);
   });
 
-  it("computes rollupStatus as the group's highest-priority unit's status", () => {
+  it("computes rollupPriority as the group's most-urgent server tier (maxLadderPriority)", () => {
     const units = [
-      unit({ id: "1", name: "a", status: "working" }),
-      unit({ id: "2", name: "b", status: "error" }),
+      unit({ id: "1", name: "a", status: "working", ladderPriority: "working" }),
+      unit({ id: "2", name: "b", status: "error", ladderPriority: "error" }),
     ];
     const groups = buildSpineGroups(units, [], null);
-    expect(groups[0].rollupStatus).toBe("error");
+    expect(groups[0].rollupPriority).toBe("error");
     expect(groups[0].hasAttention).toBe(true);
   });
 
@@ -61,8 +61,8 @@ describe("buildSpineGroups", () => {
     const groups = buildSpineGroups([], sessions, { id: "active-1", label: "Local" });
     expect(groups).toHaveLength(1);
     expect(groups[0].projectKey).toBe("app");
-    expect(groups[0].rank).toBe(8); // ADOPT_ONLY_RANK — below any real unit group
-    expect(groups[0].rollupStatus).toBeUndefined();
+    expect(groups[0].rank).toBe(7); // ADOPT_ONLY_RANK (ladderRank("idle") + 1) — below any real unit group
+    expect(groups[0].rollupPriority).toBeUndefined();
     expect(groups[0].daemonGroups[0].daemonId).toBe("active-1");
     expect(groups[0].daemonGroups[0].rows[0]).toMatchObject({
       kind: "adopt",

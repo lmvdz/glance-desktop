@@ -1,18 +1,15 @@
 // The always-visible thread spine (t3-face concern 05 — the R2 centerpiece; see
 // plans/t3-face/05-thread-spine.md and DESIGN.md's "Topology" decision row). Units + adoptable
 // sessions as rows, grouped by project then daemon/host, with collapsible group headers and a
-// roll-up attention dot. Renders REAL units from FleetClient on day one — no dependency on
-// concerns 06/07 (the daemon attention ladder) to be visible and useful; concern 07 only swaps
-// WHERE the ranking/roll-up numbers come from, never this render tree.
+// roll-up attention dot. Renders REAL units from FleetClient. Concern 07 wired the attention pills,
+// roll-ups, and header banner to the daemon's server-computed tier (`FleetUnit.ladderPriority`,
+// concern 06) — the render tree is unchanged from concern 05; only the DATA SOURCE moved off the
+// deleted client ranking.
 
 import { Alert02Icon, DashboardCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  attentionReason,
-  attentionUnits,
-  rankUnit,
-} from "../lib/fleetRoster";
+import { ladderReason, needsHuman } from "../lib/fleetLadder";
 import {
   canOpenUnitWorktree,
   getWorktreeOpener,
@@ -36,11 +33,6 @@ const CONN_LABEL: Record<RosterConnection, { text: string; cls: string }> = {
   reconnecting: { text: "reconnecting…", cls: "text-warning" },
   unauthorized: { text: "unauthorized", cls: "text-warning" },
 };
-
-/** A unit is "in attention" at rank ≤ 2 (input/error/held-for-review) — mirrors fleetRoster's
- *  `attentionUnits` filter exactly, so a row's reason only shows for the same set the header
- *  banner counts. */
-const ATTENTION_RANK_CEILING = 2;
 
 export function ThreadSpine() {
   const { units, connection, start, stop } = useFleetRoster();
@@ -99,7 +91,7 @@ export function ThreadSpine() {
     });
 
   const conn = CONN_LABEL[connection];
-  const attention = attentionUnits(units);
+  const attention = units.filter(needsHuman);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -150,7 +142,7 @@ export function ThreadSpine() {
                     label={g.projectLabel}
                     count={rowCount}
                     collapsed={isCollapsed}
-                    rollupStatus={g.rollupStatus}
+                    rollupPriority={g.rollupPriority}
                     onToggle={() => toggleGroup(g.projectKey)}
                   />
                   {!isCollapsed && (
@@ -167,11 +159,7 @@ export function ThreadSpine() {
                               <UnitSpineRow
                                 key={row.key}
                                 unit={row.unit}
-                                reason={
-                                  rankUnit(row.unit) <= ATTENTION_RANK_CEILING
-                                    ? attentionReason(row.unit)
-                                    : undefined
-                                }
+                                reason={ladderReason(row.unit) || undefined}
                                 selected={selectedId === row.key}
                                 canOpen={canOpenUnitWorktree(
                                   connections,

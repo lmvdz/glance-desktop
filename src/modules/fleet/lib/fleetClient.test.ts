@@ -61,6 +61,30 @@ describe("FleetClient.health", () => {
     expect((await client("t").health()).status).toBe("unreachable");
   });
 
+  it("markUnitSeen POSTs {agentId} to /api/attention/ladder/seen and maps 2xx → ok", async () => {
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 })),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    const res = await client("t").markUnitSeen("unit-42");
+    expect(res.ok).toBe(true);
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:7878/api/attention/ladder/seen");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({
+      agentId: "unit-42",
+    });
+  });
+
+  it("markUnitSeen reports not-ok on a non-2xx (fire-and-forget, never throws)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nope", { status: 404 })),
+    );
+    expect((await client("t").markUnitSeen("gone")).ok).toBe(false);
+  });
+
   it("sends a bearer header only when a token is present", async () => {
     const spy = vi.fn((_url: string, _init?: RequestInit) =>
       Promise.resolve(new Response("ok", { status: 200 })),

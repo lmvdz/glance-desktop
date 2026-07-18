@@ -1,6 +1,14 @@
 // Roster types + pure derivations for the fleet panes (fleet-ide-cockpit C05). A trimmed,
 // fork-local mirror of the daemon's AgentDTO — only the fields the cockpit renders. Kept
-// pure and separate from the poller so the ordering/attention rules are unit-testable.
+// pure and separate from the poller so the ordering rule is unit-testable.
+//
+// t3-face concern 07: the client no longer computes its OWN priority per unit. The daemon
+// (concern 06) stamps one `ladderPriority` on every DTO; the deleted `rankUnit`/`attentionUnits`/
+// `attentionReason`/`isValidatorHeld` cascade — which re-derived a rung from raw status/land/
+// validation signals — is replaced by rendering that server tier (see fleetLadder.ts). `sortUnits`
+// now orders by the SERVER's tier (`ladderRank`), not a client-invented rank.
+
+import { ladderRank, type LadderPriority } from "./fleetLadder";
 
 export type FleetStatus =
   | "starting"
@@ -46,58 +54,27 @@ export interface FleetUnit {
   receipt?: FleetReceipt;
   pending?: FleetPending[];
   landReady?: boolean;
-  /** Validator verdict — a `veto` (or an unresolved judge) on a land-ready unit wants review. */
+  /** Validator verdict — a `veto` (or an unresolved judge) on a land-ready unit wants review.
+   *  Kept for `fleetLadder`'s reason text; the tier decision itself is the daemon's. */
   validation?: { verdict?: "approve" | "veto" | "abstain" | "unknown" };
+  /** PR reconcile state (`open`/`merged`/`closed`) — carried only for the ladder's reason text
+   *  ("PR closed without merging"); the daemon already folds `closed` into the `error` tier. */
+  prState?: string;
   error?: string;
+  /** The daemon's ONE server-computed priority tier for this unit (t3-face concern 06 — rides every
+   *  `GET /api/agents` DTO, viewer-personalized). The cockpit renders this verdict; it never
+   *  computes its own. Absent only from a daemon that predates concern 06 → treated as `idle`. */
+  ladderPriority?: LadderPriority;
 }
 
-/** True when a land-ready unit is held by the validator (vetoed or the judge couldn't say). */
-export function isValidatorHeld(u: FleetUnit): boolean {
-  const v = u.validation?.verdict;
-  return u.landReady === true && v !== undefined && v !== "approve";
-}
-
-/**
- * Attention rank — LOWER floats higher. Mirrors the daemon TUI's `agentRank` exactly so the
- * cockpit and the terminal agree on "what needs a human first": blocked-on-input, then errored,
- * then land-ready-but-held (review), then land-ready, then the rest by liveness.
- */
-export function rankUnit(u: FleetUnit): number {
-  if (u.status === "input") return 0;
-  if (u.status === "error") return 1;
-  if (u.landReady && isValidatorHeld(u)) return 2;
-  if (u.landReady) return 3;
-  const rest: Record<FleetStatus, number> = {
-    working: 4,
-    idle: 5,
-    starting: 6,
-    stopped: 7,
-    input: 0,
-    error: 1,
-  };
-  return rest[u.status] ?? 5;
-}
-
-/** Stable roster order: by attention rank, then name (so equal-rank rows don't jitter). */
+/** Stable roster order: by the daemon's attention tier (`ladderRank`), then name (so equal-tier
+ *  rows don't jitter). The client no longer derives the tier — it only orders the server's. */
 export function sortUnits(units: FleetUnit[]): FleetUnit[] {
   return [...units].sort(
-    (a, b) => rankUnit(a) - rankUnit(b) || a.name.localeCompare(b.name),
+    (a, b) =>
+      ladderRank(a.ladderPriority) - ladderRank(b.ladderPriority) ||
+      a.name.localeCompare(b.name),
   );
-}
-
-/** The units that want a human right now: blocked-on-input, errored, or land-ready-but-held. */
-export function attentionUnits(units: FleetUnit[]): FleetUnit[] {
-  return sortUnits(units.filter((u) => rankUnit(u) <= 2));
-}
-
-/** One-line reason a unit is in the attention queue — the same wording the push/OSC lanes use. */
-export function attentionReason(u: FleetUnit): string {
-  if (u.status === "input")
-    return u.pending?.[0]?.title ?? "waiting for your input";
-  if (u.status === "error") return u.error ?? "agent error";
-  if (u.landReady && isValidatorHeld(u))
-    return `land-ready but held: validator ${u.validation?.verdict ?? "unresolved"}`;
-  return "";
 }
 
 /** Defensive: keep only well-formed units from an untrusted roster payload. `daemonId` is NOT

@@ -25,8 +25,8 @@ export function UnitSpineRow({
   onOpenWorktree,
 }: {
   unit: FleetUnit;
-  /** fleetRoster's `attentionReason()` when this unit is in the attention queue; undefined
-   *  otherwise, so the pill tooltip falls back to the bare status label. */
+  /** fleetLadder's `ladderReason()` for this unit's server tier; undefined falls the pill tooltip
+   *  back to the bare tier label. */
   reason?: string;
   selected: boolean;
   canOpen: boolean;
@@ -49,7 +49,7 @@ export function UnitSpineRow({
         aria-current={selected ? "true" : undefined}
         className="flex h-6 min-w-0 flex-1 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent/40 active:bg-accent/85 focus-visible:ring-1 focus-visible:ring-ring sm:h-7"
       >
-        <AttentionPill status={unit.status} reason={reason} compact />
+        <AttentionPill priority={unit.ladderPriority} reason={reason} compact />
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
           {unit.name}
         </span>

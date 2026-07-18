@@ -285,6 +285,30 @@ export class FleetClient {
   }
 
   /**
+   * Mark a unit seen by the requesting viewer — POST /api/attention/ladder/seen {agentId} (t3-face
+   * concern 06/07). This is the ONE write that advances a viewer's per-unit `lastVisitedAt`, so a
+   * `completed-unseen` rung resolves to `idle` on the viewer's next poll and a completion read here
+   * doesn't stay "unseen" for a second client. `viewerId`/`at` are ALWAYS server-stamped from the
+   * session — never sent from here. Fire-and-forget: a failed mark-seen just means the rung clears
+   * on the next genuine visit, never a fatal path. `ok` reflects the daemon's 2xx.
+   */
+  async markUnitSeen(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean }> {
+    const res = await fleetFetch(
+      `${this.config.baseUrl}/api/attention/ladder/seen`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ agentId: id }),
+        signal,
+      },
+    );
+    return { ok: res.ok };
+  }
+
+  /**
    * Probe reachability + auth in one call. `/api/auth/check` is viewer-tier on the daemon,
    * so it answers 200 when the token is accepted, 401/403 when it isn't, and throws (network)
    * when nothing is listening — mapping cleanly onto the three connection states the pane shows.

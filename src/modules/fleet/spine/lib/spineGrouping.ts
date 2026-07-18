@@ -3,20 +3,23 @@
 // apps/web/src/components/Sidebar.logic.ts, MIT) — group by project then daemon/host, roll up a
 // group's attention state — reimplemented against glance's own FleetUnit/AdoptableSession wire
 // shapes rather than ported verbatim (t3's version is keyed on its own thread/project entity
-// types that don't exist here). t3's status CASCADE (which state wins when a project mixes
-// statuses) is deliberately NOT ported: concern 07 replaces the roll-up source with the daemon's
-// `/api/attention/ladder` and this client-side `rank`/`rollupStatus` computation is deleted, not
-// extended — see plans/t3-face/07-spine-server-ladder.md and DESIGN.md's "Attention ladder" row.
+// types that don't exist here).
+//
+// t3-face concern 07: the per-unit tier is now the daemon's (`FleetUnit.ladderPriority`, concern 06);
+// this file no longer derives a rung from raw status. A group's roll-up is `maxLadderPriority` over
+// its units' SERVER tiers — the exact function the daemon's own `GET /api/attention/ladder` runs,
+// applied at the cockpit's project×daemon grouping (which spans merged daemons and keys on repoName,
+// a granularity the daemon's per-repo/single-daemon roll-up can't be mapped onto — see fleetLadder.ts
+// and the PR body's spec-deviation note). Ordering folds the same server tier via `ladderRank`.
 
 import type { AdoptableSession } from "../../lib/fleetAdopt";
 import {
-  type FleetStatus,
-  type FleetUnit,
-  attentionUnits,
-  rankUnit,
-  sortUnits,
-  unitKey,
-} from "../../lib/fleetRoster";
+  ladderRank,
+  type LadderPriority,
+  maxLadderPriority,
+  needsHuman,
+} from "../../lib/fleetLadder";
+import { type FleetUnit, sortUnits, unitKey } from "../../lib/fleetRoster";
 import { projectKeyFor, projectLabelFor } from "./spineFormat";
 
 export type SpineRow =
@@ -35,22 +38,22 @@ export interface SpineDaemonGroup {
 export interface SpineProjectGroup {
   projectKey: string;
   projectLabel: string;
-  /** Client roll-up rank — the MINIMUM `rankUnit()` among this group's units (v1 only; see the
-   *  file header). A group with no units (adopt-only) sorts below every real unit group but still
-   *  above nothing, at `ADOPT_ONLY_RANK`. */
+  /** Roll-up sort rank — `ladderRank(rollupPriority)` over the group's SERVER tiers (LOWER floats
+   *  higher). A group with no units (adopt-only) sorts below every real unit group but still above
+   *  nothing, at `ADOPT_ONLY_RANK`. */
   rank: number;
-  /** True when at least one unit in the group is in the attention queue (`attentionUnits`) —
-   *  drives the group header's roll-up dot color/pulse via `rollupStatus`. */
+  /** True when at least one unit in the group is in the daemon's attention set (`needsHuman`) —
+   *  drives the group header's roll-up dot color/pulse via `rollupPriority`. */
   hasAttention: boolean;
-  /** The status of the group's highest-priority unit (lowest `rankUnit`) — undefined for an
-   *  adopt-only group (nothing to roll up). Feeds the header's chevron-slot dot. */
-  rollupStatus?: FleetStatus;
+  /** The group's most-urgent unit's server tier (`maxLadderPriority`) — undefined for an adopt-only
+   *  group (nothing to roll up). Feeds the header's chevron-slot dot. */
+  rollupPriority?: LadderPriority;
   daemonGroups: SpineDaemonGroup[];
 }
 
-/** One below "stopped" (rankUnit's lowest real rank, 7) — an adopt-only project group is real
- *  work waiting for a human, so it still floats above nothing, just below any unit-bearing group. */
-const ADOPT_ONLY_RANK = 8;
+/** One below `idle` (`ladderRank`'s lowest real rank) — an adopt-only project group is real work
+ *  waiting for a human, so it still floats above nothing, just below any unit-bearing group. */
+const ADOPT_ONLY_RANK = ladderRank("idle") + 1;
 
 interface BuildingDaemon {
   daemonLabel: string;
@@ -120,12 +123,12 @@ export function buildSpineGroups(
           (r): r is Extract<SpineRow, { kind: "unit" }> => r.kind === "unit",
         )
         .map((r) => r.unit);
-      const rank = groupUnits.length
-        ? Math.min(...groupUnits.map(rankUnit))
-        : ADOPT_ONLY_RANK;
-      const rollupStatus = groupUnits.length
-        ? sortUnits(groupUnits)[0].status
+      const rollupPriority = groupUnits.length
+        ? maxLadderPriority(groupUnits.map((u) => u.ladderPriority))
         : undefined;
+      const rank = groupUnits.length
+        ? ladderRank(rollupPriority)
+        : ADOPT_ONLY_RANK;
       const daemonGroups: SpineDaemonGroup[] = [...p.daemons.entries()]
         .map(([daemonId, d]) => ({
           daemonId,
@@ -137,8 +140,8 @@ export function buildSpineGroups(
         projectKey,
         projectLabel: p.projectLabel,
         rank,
-        hasAttention: attentionUnits(groupUnits).length > 0,
-        rollupStatus,
+        hasAttention: groupUnits.some(needsHuman),
+        rollupPriority,
         daemonGroups,
       };
     },
