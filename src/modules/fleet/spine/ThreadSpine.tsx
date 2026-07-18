@@ -38,6 +38,7 @@ const CONN_LABEL: Record<RosterConnection, { text: string; cls: string }> = {
 
 export function ThreadSpine() {
   const { units, connection, start, stop } = useFleetRoster();
+  const refresh = useFleetRoster((s) => s.refresh);
   const baseUrl = useFleetConnection((s) => s.baseUrl);
   const connections = useFleetConnection((s) => s.connections);
   const activeId = useFleetConnection((s) => s.activeId);
@@ -45,6 +46,33 @@ export function ThreadSpine() {
   const selectedId = useFleetSelection((s) => s.selectedId);
   const select = useFleetSelection((s) => s.select);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [creatingThread, setCreatingThread] = useState(false);
+  const [threadErr, setThreadErr] = useState<string | null>(null);
+
+  // "New thread" (t3-face C13-F4): start a daemon console chat on the ACTIVE daemon, reusing
+  // FleetClient.createConsole (repo omitted → the daemon's own working repo), then select it and
+  // poll now so the row appears immediately instead of up to a ~2s cycle later.
+  const newThread = async () => {
+    if (creatingThread || !activeId) return;
+    setCreatingThread(true);
+    setThreadErr(null);
+    try {
+      const c = await client(activeId);
+      const id = await c.createConsole();
+      if (!id) {
+        setThreadErr("Couldn't start a new thread on this daemon.");
+        return;
+      }
+      // Poll BEFORE selecting: the new thread must be in the roster first, or FleetLayout's
+      // "selected unit vanished" cleanup would immediately deselect a key it can't yet find.
+      await refresh();
+      select(`${activeId}:${id}`);
+    } catch (e) {
+      setThreadErr(e instanceof Error ? e.message : "Couldn't start a new thread.");
+    } finally {
+      setCreatingThread(false);
+    }
+  };
 
   useEffect(() => {
     start();
@@ -99,8 +127,15 @@ export function ThreadSpine() {
     <div className="flex h-full w-full flex-col overflow-hidden">
       <SpineHeader
         count={units.length}
+        onNewThread={activeId ? () => void newThread() : undefined}
         right={<span className={`text-[11px] ${conn.cls}`}>{conn.text}</span>}
       />
+
+      {threadErr && (
+        <div className="shrink-0 border-b border-destructive/25 bg-destructive/5 px-3 py-1 text-[11px] text-destructive">
+          {threadErr}
+        </div>
+      )}
 
       {attention.length > 0 && (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-warning/25 bg-warning/5 px-3 py-1 text-[11px] font-medium text-warning-foreground">

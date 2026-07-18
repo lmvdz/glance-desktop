@@ -48,6 +48,11 @@ type FleetRosterState = {
   failures: number;
   start: () => void;
   stop: () => void;
+  /** Poll every daemon once, now — off the ~2s cadence. Resolves once the merged roster has been
+   *  updated, so a caller that just created a unit (e.g. a new console thread, C13-F4) can AWAIT this
+   *  and only then select it — selecting a key not yet in the roster would trip FleetLayout's
+   *  "selected unit vanished" cleanup and immediately deselect it. */
+  refresh: () => Promise<void>;
 };
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -173,4 +178,6 @@ export const useFleetRoster = create<FleetRosterState>((set, get) => ({
     inFlight?.abort();
     inFlight = null;
   },
+
+  refresh: () => pollOnce(set, get),
 }));

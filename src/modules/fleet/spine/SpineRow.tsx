@@ -8,13 +8,19 @@
 // spineGrouping.ts — so repeating it on every row read as clutter); full repo/branch identity
 // moves into the row's `title` tooltip since the project group header already carries it.
 
-import { FolderOpenIcon } from "@hugeicons/core-free-icons";
+import { BubbleChatIcon, FolderOpenIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import type { AdoptableSession } from "../lib/fleetAdopt";
 import type { FleetUnit } from "../lib/fleetRoster";
 import { AttentionPill } from "./AttentionPill";
 import { fmtCost, repoLabel } from "./lib/spineFormat";
+import {
+  isConsoleThread,
+  rowDuration,
+  rowReason,
+  threadTitle,
+} from "./lib/spineReason";
 
 export function UnitSpineRow({
   unit,
@@ -35,32 +41,84 @@ export function UnitSpineRow({
 }) {
   const cost = fmtCost(unit.receipt?.costUsd);
   const openable = canOpen && !!unit.worktree;
+  const thread = isConsoleThread(unit);
+  // A quiet thread reads as a conversation (chat glyph); a busy or needs-you one still shows the
+  // attention pill so the ladder never disappears behind the chat framing.
+  const quiet =
+    !unit.ladderPriority ||
+    unit.ladderPriority === "idle" ||
+    unit.ladderPriority === "completed-unseen";
+  const title = thread ? threadTitle() : unit.name;
+  // The honest "why + how long" sub-line (t3-face C13-F3): reason under needs-you/plan-ready rows,
+  // duration measured from the state-transition timestamp — never spawn age.
+  const why = rowReason(unit);
+  const duration = rowDuration(unit, Date.now());
+  const subline = why || duration;
   return (
     <div
       className={cn(
-        "group/row flex h-6 items-center gap-1 rounded-md pr-1 sm:h-7",
+        "group/row flex min-h-6 items-center gap-1 rounded-md pr-1 sm:min-h-7",
         selected && "bg-primary/15",
       )}
     >
       <button
         type="button"
         onClick={onSelect}
-        title={`${unit.name} — ${repoLabel(unit)}`}
+        title={`${title} — ${repoLabel(unit)}`}
         aria-current={selected ? "true" : undefined}
-        className="flex h-6 min-w-0 flex-1 cursor-pointer select-none items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-accent/40 active:bg-accent/85 focus-visible:ring-1 focus-visible:ring-ring sm:h-7"
+        className="flex min-h-6 min-w-0 flex-1 cursor-pointer select-none flex-col justify-center gap-0.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/40 active:bg-accent/85 focus-visible:ring-1 focus-visible:ring-ring sm:min-h-7"
       >
-        <AttentionPill priority={unit.ladderPriority} reason={reason} compact />
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
-          {unit.name}
-        </span>
-        {unit.harness && (
-          <span className="shrink-0 truncate text-[10px] text-muted-foreground/60">
-            {unit.harness}
+        <span className="flex w-full min-w-0 items-center gap-2">
+          {thread && quiet ? (
+            <HugeiconsIcon
+              icon={BubbleChatIcon}
+              size={12}
+              className="shrink-0 text-muted-foreground/60"
+              aria-label="chat thread"
+            />
+          ) : (
+            <AttentionPill
+              priority={unit.ladderPriority}
+              reason={reason}
+              compact
+            />
+          )}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-[12px] font-medium text-foreground",
+              thread && "italic text-foreground/85",
+            )}
+          >
+            {title}
           </span>
-        )}
-        {cost && (
-          <span className="shrink-0 text-[10px] text-muted-foreground/70">
-            {cost}
+          {!thread && unit.harness && (
+            <span className="shrink-0 truncate text-[10px] text-muted-foreground/60">
+              {unit.harness}
+            </span>
+          )}
+          {cost && (
+            <span className="shrink-0 text-[10px] text-muted-foreground/70">
+              {cost}
+            </span>
+          )}
+        </span>
+        {subline && (
+          <span className="flex w-full min-w-0 items-baseline gap-1.5 pl-3.5">
+            {why && (
+              <span className="min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground/80">
+                {why}
+              </span>
+            )}
+            {duration && (
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] text-muted-foreground/60",
+                  !why && "flex-1",
+                )}
+              >
+                {duration}
+              </span>
+            )}
           </span>
         )}
       </button>

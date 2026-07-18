@@ -239,19 +239,25 @@ export class FleetClient {
     ).catch(() => {});
   }
 
-  /** Create a lightweight "console" chat unit — POST /api/console {repo, model?, profileId?} → { agentId }.
+  /** Create a lightweight "console" chat unit — POST /api/console {repo?, model?, profileId?} → { agentId }.
    *  The daemon-backed chat (E01) lazily creates one on the first turn; the agentId is remembered so
-   *  every turn steers the SAME unit (and so E02 can promote it in place). Returns null on failure. */
+   *  every turn steers the SAME unit (and so E02 can promote it in place). `repo` is optional: the
+   *  spine's "New thread" verb (C13-F4) omits it, and the daemon defaults to its own working repo —
+   *  a chat with the fleet's home project. Returns null on failure. */
   async createConsole(
-    repo: string,
+    repo?: string,
     model?: string,
     profileId?: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
+    const payload: Record<string, string> = {};
+    if (repo) payload.repo = repo;
+    if (model) payload.model = model;
+    if (profileId) payload.profileId = profileId;
     const res = await fleetFetch(`${this.config.baseUrl}/api/console`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ repo, model, profileId }),
+      body: JSON.stringify(payload),
       signal,
     });
     if (!res.ok) return null;
