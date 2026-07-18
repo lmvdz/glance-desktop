@@ -43,6 +43,7 @@ export type ShortcutId =
   | "ai.toggleMini"
   | "ai.askSelection"
   | "agent.focusAttention"
+  | "fleet.grr"
   | "settings.open"
   | "sidebar.toggle"
   | "editor.undo"
@@ -95,6 +96,14 @@ export const SHORTCUTS: Shortcut[] = [
     label: "Open settings",
     group: "General",
     defaultBindings: [{ [MOD_PROP]: true, key: "," }],
+  },
+  {
+    id: "fleet.grr",
+    label: "Capture friction (grr)",
+    group: "General",
+    // The daemon TUI captures friction on Ctrl-G, but Mod+G already toggles the source panel
+    // here (pane.source), so the desktop mirrors the intent on Mod+Shift+G — a free chord.
+    defaultBindings: [{ [MOD_PROP]: true, shift: true, key: "g" }],
   },
   {
     id: "tab.new",

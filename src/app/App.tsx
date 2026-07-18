@@ -34,7 +34,14 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
-import { setWorktreeOpener } from "@/modules/fleet";
+import {
+  GrrModal,
+  resolveGrrRepo,
+  setWorktreeOpener,
+  unitKey,
+  useFleetRoster,
+  useFleetSelection,
+} from "@/modules/fleet";
 import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
@@ -284,6 +291,7 @@ export default function App() {
   } = useSidebarPanel(explorerRef);
 
   const [newEditorOpen, setNewEditorOpen] = useState(false);
+  const [grrOpen, setGrrOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteInitialMode, setPaletteInitialMode] = useState<
     "commands" | "content"
@@ -323,6 +331,23 @@ export default function App() {
   );
 
   useWindowTitle(activeTab, explorerRoot);
+
+  // The repo a friction gripe (C3) is filed against — the selected fleet unit's repo when a fleet
+  // tab is focused, else the active workspace cwd. Resolved lazily off store snapshots when the
+  // modal opens so App never re-renders on the 2s roster poll just to keep this current.
+  const grrRepo = useMemo(() => {
+    if (!grrOpen) return null;
+    const selectedId = useFleetSelection.getState().selectedId;
+    const units = useFleetRoster.getState().units;
+    const selectedUnit = selectedId
+      ? units.find((u) => unitKey(u) === selectedId)
+      : undefined;
+    return resolveGrrRepo({
+      fleetTabActive: activeTab?.kind === "fleet",
+      selectedUnitRepo: selectedUnit?.repo ?? null,
+      workspaceCwd: explorerRoot,
+    });
+  }, [grrOpen, activeTab, explorerRoot]);
 
   useEffect(() => {
     setActiveSearchAddon(
@@ -753,6 +778,7 @@ export default function App() {
         const t = nextAttentionTarget();
         if (t) activateAgentTarget(t.tabId, t.leafId);
       },
+      "fleet.grr": () => setGrrOpen(true),
       "settings.open": () => void openSettingsWindow(),
       "sidebar.toggle": toggleSidebar,
       "explorer.focus": toggleExplorerFocus,
@@ -1098,6 +1124,7 @@ export default function App() {
             openNewEditor: () => setNewEditorOpen(true),
             openNewPreview: () => openPreviewTab(""),
             openNewFleet: () => openFleetTab(),
+            openFrictionCapture: () => setGrrOpen(true),
             openGitGraph: openGitGraphFromContext,
             toggleSourceControl,
             closeActiveTabOrPane: handleCloseTabOrPane,
@@ -1371,6 +1398,8 @@ export default function App() {
             onOpenContentHit={openContentHit}
             insertCommand={insertHistoryCommand}
           />
+
+          <GrrModal open={grrOpen} onOpenChange={setGrrOpen} repo={grrRepo} />
 
           <NewEditorDialog
             open={newEditorOpen}
