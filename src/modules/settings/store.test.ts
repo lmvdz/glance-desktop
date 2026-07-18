@@ -76,3 +76,74 @@ describe("settings store migration", () => {
     expect(registry.snapshot(OLD_PATH)).toEqual({});
   });
 });
+
+const DEFAULT_THEME_ID = "glance-default";
+const LEGACY_DEFAULT_THEME_ID = "terax-default";
+
+describe("t3-face one-time theme reset migration", () => {
+  it("fresh install on the default: stamps the flag, no reset, nothing recorded", async () => {
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe(DEFAULT_THEME_ID);
+    expect(prefs.themeIdBeforeT3face).toBeNull();
+    // The flag is stamped so it never runs again.
+    expect(registry.snapshot(NEW_PATH).t3faceThemeReset).toBe(true);
+    expect(registry.snapshot(NEW_PATH).themeIdBeforeT3face).toBeUndefined();
+  });
+
+  it("upgrade with a persisted builtin theme: resets the selection and records the old id", async () => {
+    registry.seed(NEW_PATH, { themeId: "dracula" });
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe(DEFAULT_THEME_ID); // t3-face skin now shows
+    expect(prefs.themeIdBeforeT3face).toBe("dracula"); // preserved for opt-back
+    const snap = registry.snapshot(NEW_PATH);
+    expect(snap.themeId).toBe(DEFAULT_THEME_ID);
+    expect(snap.themeIdBeforeT3face).toBe("dracula");
+    expect(snap.t3faceThemeReset).toBe(true);
+  });
+
+  it("upgrade with a persisted custom theme: resets and records it (the custom theme itself is untouched)", async () => {
+    registry.seed(NEW_PATH, { themeId: "custom-abc123" });
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe(DEFAULT_THEME_ID);
+    expect(prefs.themeIdBeforeT3face).toBe("custom-abc123");
+  });
+
+  it("a persisted legacy-default id is treated as the default: flag stamped, no reset", async () => {
+    registry.seed(NEW_PATH, { themeId: LEGACY_DEFAULT_THEME_ID });
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe(DEFAULT_THEME_ID);
+    expect(prefs.themeIdBeforeT3face).toBeNull();
+    expect(registry.snapshot(NEW_PATH).t3faceThemeReset).toBe(true);
+  });
+
+  it("second boot after a reset is a no-op (default stays, recorded id preserved)", async () => {
+    registry.seed(NEW_PATH, {
+      themeId: DEFAULT_THEME_ID,
+      themeIdBeforeT3face: "dracula",
+      t3faceThemeReset: true,
+    });
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe(DEFAULT_THEME_ID);
+    expect(prefs.themeIdBeforeT3face).toBe("dracula");
+  });
+
+  it("a user who re-picks their old theme after the migration keeps it (flag prevents re-reset)", async () => {
+    registry.seed(NEW_PATH, {
+      themeId: "dracula", // re-selected post-migration
+      themeIdBeforeT3face: "dracula",
+      t3faceThemeReset: true,
+    });
+    const prefs = await settingsMod.loadPreferences();
+    expect(prefs.themeId).toBe("dracula"); // respected, not reset again
+  });
+
+  it("is idempotent within a process: a second load never re-runs the reset", async () => {
+    registry.seed(NEW_PATH, { themeId: "dracula" });
+    await settingsMod.loadPreferences(); // resets, records dracula
+    // Simulate the user re-picking their old theme in the same session.
+    await settingsMod.setThemeId("dracula");
+    const prefs = await settingsMod.loadPreferences(); // must not reset again
+    expect(prefs.themeId).toBe("dracula");
+    expect(prefs.themeIdBeforeT3face).toBe("dracula");
+  });
+});
