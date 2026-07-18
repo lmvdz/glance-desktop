@@ -4,11 +4,11 @@ import {
   ArrowRight01Icon,
   FolderOpenIcon,
   Logout03Icon,
-  SentIcon,
   UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
+import { ComposerShell } from "@/components/composer/ComposerShell";
 import { ConversationView } from "./ConversationView";
 import {
   type DiffLineKind,
@@ -17,7 +17,7 @@ import {
   normalizeDiff,
   whyStopped,
 } from "./lib/fleetIntervene";
-import type { FleetUnit } from "./lib/fleetRoster";
+import { type FleetUnit, unitKey } from "./lib/fleetRoster";
 import {
   IDLE_TAKEOVER,
   type TakeoverState,
@@ -30,6 +30,7 @@ import { getWorktreeOpener } from "./lib/worktreeOpener";
 import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetTranscript } from "./store/fleetTranscriptStore";
+import { useSteerDraftStore } from "./store/fleetSteerDraftStore";
 
 const LINE_CLS: Record<DiffLineKind, string> = {
   add: "bg-success/10 text-success-foreground",
@@ -78,7 +79,14 @@ export function IntervenePane({
   const [diff, setDiff] = useState<FleetFileDiff[] | null>(null);
   const [diffErr, setDiffErr] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState(false);
-  const [steerText, setSteerText] = useState("");
+  // Draft text lives in a persisted store keyed per unit (M02's daemonId:id key), NOT local
+  // state — the law-5 fix. A plain useState here is exactly what used to lose the human's
+  // half-typed instruction the instant RosterView force-clears selection and this pane
+  // unmounts (unit lands/vanishes mid-type). See fleetSteerDraftStore.ts.
+  const draftKey = unitKey(unit);
+  const steerText = useSteerDraftStore((s) => s.drafts[draftKey] ?? "");
+  const setDraft = useSteerDraftStore((s) => s.setDraft);
+  const clearDraft = useSteerDraftStore((s) => s.clearDraft);
   const [steering, setSteering] = useState(false);
   const [steerErr, setSteerErr] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -126,7 +134,7 @@ export function IntervenePane({
     setSteering(true);
     setSteerErr(null);
     addOptimistic(message, clientTurnId);
-    setSteerText("");
+    clearDraft(draftKey);
     try {
       const res = await (await client(unit.daemonId)).steer(unit.id, message);
       if (!res.ok) setSteerErr(res.detail ?? "steer failed");
@@ -134,6 +142,19 @@ export function IntervenePane({
       setSteerErr(e instanceof Error ? e.message : "steer failed");
     } finally {
       setSteering(false);
+    }
+  };
+
+  // Composer's stop-square action: interrupt the unit's current turn — reusing the same
+  // primitive `takeOver()` already drives, but without claiming presence/observe mode (this
+  // is "stop what you're doing", not "hand control to me"). Kept independent of the takeover
+  // state machine so the two affordances stay disjoint.
+  const stopUnit = async () => {
+    try {
+      const c = await client(unit.daemonId);
+      await c.interrupt(unit.id);
+    } catch (e) {
+      setSteerErr(e instanceof Error ? e.message : "interrupt failed");
     }
   };
 
@@ -333,13 +354,22 @@ export function IntervenePane({
         <ConversationView entries={entries} />
       </div>
 
-      {/* Steer composer. */}
+      {/* Steer composer — t3 glass shell shared with the AI chat composer (see
+          src/components/composer/ComposerShell.tsx). "Running" ties to the UNIT's own busy
+          state (not our outgoing POST) — per t3 and current fleet behavior there's no queue
+          toggle, so you can still steer a working unit; the stop square interrupts it. */}
       <div className="shrink-0 border-t border-border/60 p-2.5">
-        <div className="flex items-end gap-2">
+        <ComposerShell
+          running={unit.status === "working"}
+          canSend={!steering && steerText.trim().length > 0}
+          onSend={() => void steer()}
+          onStop={() => void stopUnit()}
+          sendTitle="Send (⌘/Ctrl+Enter)"
+        >
           <textarea
             ref={composerRef}
             value={steerText}
-            onChange={(e) => setSteerText(e.target.value)}
+            onChange={(e) => setDraft(draftKey, e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -348,19 +378,9 @@ export function IntervenePane({
             }}
             placeholder="Message this unit… (⌘/Ctrl+Enter to send)"
             rows={2}
-            className="min-h-9 flex-1 resize-none rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-[12px] text-foreground outline-none focus:border-ring"
+            className="min-h-9 max-h-40 w-full resize-none bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
           />
-          <button
-            type="button"
-            onClick={() => void steer()}
-            disabled={steering || !steerText.trim()}
-            title="Send (⌘/Ctrl+Enter)"
-            className="flex h-9 cursor-pointer items-center gap-1 rounded-md bg-primary px-3 text-[12px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <HugeiconsIcon icon={SentIcon} size={14} />
-            {steering ? "Sending…" : "Send"}
-          </button>
-        </div>
+        </ComposerShell>
         {steerErr && (
           <div className="mt-1 text-[11px] text-destructive">{steerErr}</div>
         )}
