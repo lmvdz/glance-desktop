@@ -35,7 +35,11 @@ import {
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
 import { setWorktreeOpener } from "@/modules/fleet";
+import { type FleetUnit, unitKey } from "@/modules/fleet/lib/fleetRoster";
 import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
+import { useFleetRoster } from "@/modules/fleet/store/fleetRosterStore";
+import { useFleetSelection } from "@/modules/fleet/store/fleetSelectionStore";
+import { repoLabel } from "@/modules/fleet/spine/lib/spineFormat";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
   Header,
@@ -295,6 +299,43 @@ export default function App() {
     },
     [],
   );
+  // Fleet units for the command palette's jump-to-unit rows (t3-face concern 07). The roster is
+  // polled — and this root subscribes to it — ONLY while the palette is open (ref-counted via
+  // start()/stop() with any mounted fleet pane), so App never re-renders on the 2s poll cadence when
+  // the palette is closed. The rows carry the daemon's server tier for their status cluster.
+  const [fleetUnits, setFleetUnits] = useState<FleetUnit[]>([]);
+  useEffect(() => {
+    if (!commandPaletteOpen) return;
+    const { start, stop } = useFleetRoster.getState();
+    start();
+    setFleetUnits(useFleetRoster.getState().units);
+    const unsubscribe = useFleetRoster.subscribe((s) => setFleetUnits(s.units));
+    return () => {
+      unsubscribe();
+      stop();
+    };
+  }, [commandPaletteOpen]);
+  const fleetPaletteUnits = useMemo(
+    () =>
+      fleetUnits.map((u) => ({
+        key: unitKey(u),
+        name: u.name,
+        repoLabel: repoLabel(u),
+        priority: u.ladderPriority,
+        startedAt: u.startedAt,
+      })),
+    [fleetUnits],
+  );
+  const openFleetUnit = useCallback(
+    (key: string) => {
+      const existing = tabsRef.current.find((t) => t.kind === "fleet");
+      if (existing) setActiveId(existing.id);
+      else newFleetTab();
+      useFleetSelection.getState().select(key);
+    },
+    [newFleetTab, setActiveId],
+  );
+
   const miniOpen = useChatStore((s) => s.mini.open);
   const miniPresence = usePresence(miniOpen, 200);
   const openMini = useChatStore((s) => s.openMini);
@@ -1115,6 +1156,8 @@ export default function App() {
             openSpacesOverview: () => setSwitcherOpen(true),
             newSpace: () => void handleNewSpace(),
             switchSpace: (id) => useSpaces.getState().setActive(id),
+            fleetUnits: fleetPaletteUnits,
+            openFleetUnit,
           })
         : [],
     [
@@ -1138,6 +1181,8 @@ export default function App() {
       askFromSelection,
       activeSpaceId,
       handleNewSpace,
+      fleetPaletteUnits,
+      openFleetUnit,
     ],
   );
 

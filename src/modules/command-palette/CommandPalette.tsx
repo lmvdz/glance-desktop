@@ -8,6 +8,7 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { fileIconUrl } from "@/modules/explorer/lib/iconResolver";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import {
@@ -422,7 +423,23 @@ function ActionItem({
       onSelect={onRun}
       className="text-[12.5px]"
     >
-      {item.icon ? (
+      {item.leadingDot ? (
+        <span
+          role="img"
+          aria-label={item.leadingDot.label}
+          className={cn(
+            "flex size-3.5 shrink-0 items-center justify-center",
+          )}
+        >
+          <span
+            className={cn(
+              "size-1.5 rounded-full",
+              item.leadingDot.className,
+              item.leadingDot.pulse && "animate-status-pulse",
+            )}
+          />
+        </span>
+      ) : item.icon ? (
         <HugeiconsIcon
           icon={item.icon}
           size={14}
