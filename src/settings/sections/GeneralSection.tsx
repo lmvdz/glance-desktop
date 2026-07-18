@@ -465,7 +465,7 @@ export function GeneralSection() {
           </SettingRow>
           <SettingRow
             title="Open fleet on launch"
-            description="When a fleet daemon connection is set up, land in the fleet cockpit at startup instead of a terminal. Ignored when you open Glance on a specific file or folder."
+            description="Land in the threads hub at startup instead of the workspace IDE. Only sets the first-run default — once you switch shells, Glance reopens wherever you last were. Ignored when you open Glance on a specific file or folder."
           >
             <Switch
               checked={openFleetOnLaunch}
