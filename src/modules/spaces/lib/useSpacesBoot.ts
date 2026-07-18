@@ -1,4 +1,5 @@
 import { native } from "@/modules/ai/lib/native";
+import { dropFleetTabs } from "@/modules/migrations/fleetTabMigration";
 import { usePreferencesStore } from "@/modules/settings/preferences";
 import type { Tab } from "@/modules/tabs";
 import { DEFAULT_SPACE_ID } from "@/modules/tabs/lib/useTabs";
@@ -82,7 +83,11 @@ export function useSpacesBoot({
         for (const space of spaces) {
           const st = states.get(space.id);
           if (!st) continue;
-          restored.push(...hydrateTabs(st.tabs, space.id, allocId));
+          // Strip retired `fleet` tabs (hub-shell H0) before hydration — the
+          // fleet is the default shell now, not a tab that anything renders.
+          restored.push(
+            ...hydrateTabs(dropFleetTabs(st.tabs), space.id, allocId),
+          );
         }
 
         const active =

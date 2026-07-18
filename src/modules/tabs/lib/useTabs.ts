@@ -62,9 +62,13 @@ export type PreviewTab = TabBase & {
   url: string;
 };
 
-// A pane onto a glance fleet daemon (fleet-ide-cockpit C04). The connection target lives
-// in module state (fleetConfig/keyring), so the tab itself carries no payload — one fleet
-// pane is like any other; the pane reads the single shared connection store.
+/**
+ * @deprecated The `fleet` tab kind is retired (hub-shell H0): the fleet surface
+ * is the app's default shell (`HubShell`), not a tab inside terax's IDE frame.
+ * This type is no longer part of the `Tab` union and nothing creates it; it's
+ * kept exported for one release so the restore-path migration
+ * (`dropFleetTabs`) documents what it strips. Remove a release from now.
+ */
 export type FleetTab = TabBase & {
   id: number;
   kind: "fleet";
@@ -127,7 +131,6 @@ export type Tab =
   | TerminalTab
   | EditorTab
   | PreviewTab
-  | FleetTab
   | MarkdownTab
   | AiDiffTab
   | GitDiffTab
@@ -686,16 +689,6 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     return id;
   }, []);
 
-  const newFleetTab = useCallback(() => {
-    const id = nextIdRef.current++;
-    setTabs((t) => [
-      ...t,
-      { id, kind: "fleet", spaceId: activeSpaceIdRef.current, title: "Fleet" },
-    ]);
-    setActiveId(id);
-    return id;
-  }, []);
-
   const newMarkdownTab = useCallback((path: string) => {
     let targetId: number | null = null;
     setTabs((curr) => {
@@ -1201,7 +1194,6 @@ export function useTabs(initial?: Partial<TerminalTab>) {
     openFileTab,
     pinTab,
     newPreviewTab,
-    newFleetTab,
     newMarkdownTab,
     setMarkdownView,
     openAiDiffTab,
