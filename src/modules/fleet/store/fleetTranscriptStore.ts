@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { unitKey } from "../lib/fleetRoster";
 import {
   type TranscriptEntry,
   mergeTranscript,
@@ -6,6 +7,7 @@ import {
   reconcileOptimistic,
   runningFloor,
 } from "../lib/fleetTranscript";
+import { getPrewarmedTranscript } from "../spine/lib/transcriptPrewarm";
 import { useFleetConnection } from "./fleetConnectionStore";
 
 // The live ACP conversation for the selected unit (I03). Polls the transcript DELTA (I01's
@@ -84,7 +86,13 @@ export const useFleetTranscript = create<FleetTranscriptState>((set, get) => ({
     inFlight?.abort();
     currentUnit = unitId;
     currentDaemon = daemonId;
-    set({ unitId, daemonId, entries: [] }); // fresh unit → full re-fetch (since=0)
+    // t3-face C05: seed from the spine's prewarm cache when this unit was warmed ahead of the
+    // click (ThreadSpine's top-N prewarm) — paints the pane instantly instead of blanking it
+    // while the first poll is in flight. `since` below is still derived from the seed's own
+    // runningFloor, so the first poll only fetches what's changed since the prewarm snapshot; a
+    // cold (unwarmed) unit falls back to `[]` exactly as before.
+    const seed = getPrewarmedTranscript(unitKey({ daemonId, id: unitId })) ?? [];
+    set({ unitId, daemonId, entries: seed });
     void pollOnce(unitId, daemonId, get, set);
     timer = setInterval(
       () => void pollOnce(unitId, daemonId, get, set),

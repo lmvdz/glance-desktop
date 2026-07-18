@@ -9,14 +9,15 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect } from "react";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
-import { RosterView } from "./RosterView";
+import { FleetLayout } from "./spine/FleetLayout";
 import {
   type ConnectionStatus,
   useFleetConnection,
 } from "./store/fleetConnectionStore";
 
-// C04 skeleton: this pane shows ONLY the daemon connection state. The live roster and
-// attention queue render here in C05, once the connection layer below is trusted.
+// C04 skeleton: this pane shows ONLY the daemon connection state. The always-visible thread
+// spine (C05) — units + adoptable sessions grouped by project/daemon, detail pane adjacent —
+// takes over once the connection layer below is trusted.
 
 const STATUS_META: Record<
   ConnectionStatus,
@@ -64,9 +65,9 @@ export function FleetPane({ visible }: { visible: boolean }) {
     if (visible && hydrated) void refresh();
   }, [visible, hydrated, refresh]);
 
-  // Connected → the live roster (C05) takes over the pane. Every other state keeps the
+  // Connected → the thread spine (C05) takes over the pane. Every other state keeps the
   // centered connection view below so the operator can see why there's no fleet yet.
-  if (status === "connected") return <RosterView />;
+  if (status === "connected") return <FleetLayout />;
 
   const meta = STATUS_META[status];
 
