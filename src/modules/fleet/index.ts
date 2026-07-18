@@ -1,4 +1,4 @@
-export { FleetStack } from "./FleetStack";
+export { FleetLayout } from "./spine/FleetLayout";
 export { useFleetConnection } from "./store/fleetConnectionStore";
 export { useFleetRoster } from "./store/fleetRosterStore";
 export {
