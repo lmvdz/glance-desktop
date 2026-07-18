@@ -6,14 +6,9 @@
 // concern 06) — the render tree is unchanged from concern 05; only the DATA SOURCE moved off the
 // deleted client ranking.
 
-import {
-  Alert02Icon,
-  DashboardCircleIcon,
-  InboxIcon,
-} from "@hugeicons/core-free-icons";
+import { Alert02Icon, InboxIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
 import { FleetEmpty } from "../EmptyState";
 import { ladderReason, needsHuman } from "../lib/fleetLadder";
 import {
@@ -31,6 +26,7 @@ import { buildSpineGroups, shouldShowHostBadges } from "./lib/spineGrouping";
 import { prewarmTopUnits } from "./lib/transcriptPrewarm";
 import { useAdoptableSessions } from "./lib/useAdoptableSessions";
 import { GroupHeader } from "./GroupHeader";
+import { SpineHeader, SpineSkeleton } from "./SpineChrome";
 import { AdoptSpineRow, UnitSpineRow } from "./SpineRow";
 
 const CONN_LABEL: Record<RosterConnection, { text: string; cls: string }> = {
@@ -39,24 +35,6 @@ const CONN_LABEL: Record<RosterConnection, { text: string; cls: string }> = {
   reconnecting: { text: "reconnecting…", cls: "text-warning" },
   unauthorized: { text: "unauthorized", cls: "text-warning" },
 };
-
-/** Ghost unit rows while the first roster fetch is in flight — the unison skeleton sweep (t3-face
- *  C11), so a cold spine paints its shape immediately instead of a blank column or a "Loading…" line. */
-function SpineSkeleton() {
-  return (
-    <div className="flex flex-col gap-1 px-2 py-1" aria-hidden>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <div key={i} className="flex h-7 items-center gap-2 px-2">
-          <Skeleton className="size-1.5 rounded-full" />
-          <Skeleton
-            className="h-3 rounded"
-            style={{ width: `${70 - i * 8}%` }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function ThreadSpine() {
   const { units, connection, start, stop } = useFleetRoster();
@@ -119,22 +97,10 @@ export function ThreadSpine() {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
-      <header className="surface-subheader justify-between px-3">
-        <div className="flex items-center gap-2">
-          <HugeiconsIcon
-            icon={DashboardCircleIcon}
-            size={15}
-            className="text-muted-foreground"
-          />
-          <span className="text-[13px] font-semibold text-foreground">
-            Fleet
-          </span>
-          <span className="text-[11px] text-muted-foreground/70">
-            {units.length} unit{units.length === 1 ? "" : "s"}
-          </span>
-        </div>
-        <span className={`text-[11px] ${conn.cls}`}>{conn.text}</span>
-      </header>
+      <SpineHeader
+        count={units.length}
+        right={<span className={`text-[11px] ${conn.cls}`}>{conn.text}</span>}
+      />
 
       {attention.length > 0 && (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-warning/25 bg-warning/5 px-3 py-1 text-[11px] font-medium text-warning-foreground">
