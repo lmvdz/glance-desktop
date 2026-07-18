@@ -8,10 +8,7 @@ import { useComposer } from "../lib/composer";
 import { SLASH_COMMANDS } from "../lib/slashCommands";
 import { useChatStore } from "../store/chatStore";
 import { useSnippetsStore } from "../store/snippetsStore";
-import { AgentSwitcher } from "./AgentSwitcher";
-import { DaemonModeToggle } from "./DaemonModeToggle";
 import { FilePickerContent } from "./FilePicker";
-import { PromoteToUnitButton } from "./PromoteToUnitButton";
 import { SnippetPickerContent, type PickerItem } from "./SnippetPicker";
 
 type SnippetTrigger = {
@@ -211,65 +208,60 @@ export function AiComposerInput() {
     <>
       <Popover open={pickerOpen}>
         <PopoverAnchor asChild>
-          <div className="flex items-start gap-2">
-            <textarea
-              ref={c.textareaRef}
-              value={c.value}
-              onChange={(e) => c.setValue(e.target.value)}
-              onKeyUp={updateTrigger}
-              onClick={updateTrigger}
-              onSelect={updateTrigger}
-              onKeyDown={(e) => {
-                if (pickerOpen) {
-                  const items = fileTrigger ? filteredFiles : filteredItems;
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setActiveIndex((i) =>
-                      Math.min(i + 1, Math.max(0, items.length - 1)),
-                    );
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setActiveIndex((i) => Math.max(0, i - 1));
-                    return;
-                  }
-                  if (e.key === "Tab" || e.key === "Enter") {
-                    if (items.length > 0) {
-                      e.preventDefault();
-                      pickActive();
-                      return;
-                    }
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    if (fileTrigger) {
-                      const before = c.value.slice(0, fileTrigger.start);
-                      const after = c.value.slice(fileTrigger.end);
-                      c.setValue(`${before}${after}`);
-                      setFileTrigger(null);
-                    } else {
-                      setTrigger(null);
-                    }
-                    return;
-                  }
-                }
-                if (e.key === "Enter" && !e.shiftKey) {
+          <textarea
+            ref={c.textareaRef}
+            value={c.value}
+            onChange={(e) => c.setValue(e.target.value)}
+            onKeyUp={updateTrigger}
+            onClick={updateTrigger}
+            onSelect={updateTrigger}
+            onKeyDown={(e) => {
+              if (pickerOpen) {
+                const items = fileTrigger ? filteredFiles : filteredItems;
+                if (e.key === "ArrowDown") {
                   e.preventDefault();
-                  c.submit();
+                  setActiveIndex((i) =>
+                    Math.min(i + 1, Math.max(0, items.length - 1)),
+                  );
+                  return;
                 }
-              }}
-              placeholder="Ask Glance anything   -   # for snippets and commands, @ for files"
-              rows={1}
-              className={cn(
-                "max-h-40 flex-1 resize-none bg-transparent text-[13px] leading-relaxed outline-none",
-                "placeholder:text-muted-foreground/60",
-              )}
-            />
-            <DaemonModeToggle />
-            <PromoteToUnitButton />
-            <AgentSwitcher />
-          </div>
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActiveIndex((i) => Math.max(0, i - 1));
+                  return;
+                }
+                if (e.key === "Tab" || e.key === "Enter") {
+                  if (items.length > 0) {
+                    e.preventDefault();
+                    pickActive();
+                    return;
+                  }
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  if (fileTrigger) {
+                    const before = c.value.slice(0, fileTrigger.start);
+                    const after = c.value.slice(fileTrigger.end);
+                    c.setValue(`${before}${after}`);
+                    setFileTrigger(null);
+                  } else {
+                    setTrigger(null);
+                  }
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                c.submit();
+              }
+            }}
+            placeholder="Ask Glance anything   -   # for snippets and commands, @ for files"
+            rows={1}
+            className={cn(
+              "w-full max-h-40 resize-none bg-transparent text-[13px] leading-relaxed outline-none",
+              "placeholder:text-muted-foreground/60",
+            )}
+          />
         </PopoverAnchor>
         {fileTrigger ? (
           <FilePickerContent
