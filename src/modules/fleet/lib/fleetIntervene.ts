@@ -22,24 +22,6 @@ export function normalizeDiff(payload: unknown): FleetFileDiff[] {
   );
 }
 
-export type DiffLineKind = "add" | "del" | "hunk" | "meta" | "context";
-
-/** Classify a unified-diff line for colorization. `+++`/`---`/`diff`/`index` are file meta; a
- *  bare `+`/`-` is an add/del; `@@` is a hunk header; everything else is context. */
-export function diffLineKind(line: string): DiffLineKind {
-  if (line.startsWith("@@")) return "hunk";
-  if (
-    line.startsWith("+++") ||
-    line.startsWith("---") ||
-    line.startsWith("diff ") ||
-    line.startsWith("index ")
-  )
-    return "meta";
-  if (line.startsWith("+")) return "add";
-  if (line.startsWith("-")) return "del";
-  return "context";
-}
-
 export interface WhyStopped {
   /** Short label for the state. */
   label: string;
