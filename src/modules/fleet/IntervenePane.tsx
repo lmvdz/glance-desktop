@@ -4,6 +4,7 @@ import {
   ArrowRight01Icon,
   FolderOpenIcon,
   Logout03Icon,
+  RocketIcon,
   UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -30,6 +31,7 @@ import {
   resumePrompt,
 } from "./lib/fleetTakeover";
 import { getWorktreeOpener } from "./lib/worktreeOpener";
+import { isConsoleThread } from "./spine/lib/spineReason";
 import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetTranscript } from "./store/fleetTranscriptStore";
@@ -60,6 +62,11 @@ function FleetDiffFile({
     />
   );
 }
+
+// The task steered into a console chat when it's promoted into a working unit (E02) — mirrors the AI
+// chat's PromoteToUnitButton so the two promote paths ask the agent for the same thing.
+const PROMOTE_TASK =
+  "Go ahead and implement what we've discussed: make the changes in this worktree and commit them.";
 
 export function IntervenePane({
   unit,
@@ -125,6 +132,35 @@ export function IntervenePane({
   }, [unit.id, unit.daemonId, client]);
 
   const why = whyStopped(unit);
+  // A daemon console chat (E01) renders as a conversation, not a work unit: the diff/lease/why-stopped
+  // chrome is suppressed and a Promote action (E02) replaces Take over. Once promoted it's a real
+  // unit (`promoted`) and drops back to the full chrome below.
+  const thread = isConsoleThread(unit);
+  const [promoting, setPromoting] = useState(false);
+  const [promoteErr, setPromoteErr] = useState<string | null>(null);
+
+  const promote = async () => {
+    if (promoting) return;
+    setPromoting(true);
+    setPromoteErr(null);
+    try {
+      const c = await client(unit.daemonId);
+      const res = await c.promote(unit.id, { task: PROMOTE_TASK });
+      if (!res.ok) {
+        setPromoteErr(res.reason ?? "promote failed");
+        return;
+      }
+      if (res.agent?.worktree)
+        getWorktreeOpener()?.open({
+          name: res.agent.name || unit.name,
+          worktree: res.agent.worktree,
+        });
+    } catch (e) {
+      setPromoteErr(e instanceof Error ? e.message : "promote failed");
+    } finally {
+      setPromoting(false);
+    }
+  };
 
   // Send a turn INTO the same ACP session (POST /api/command {type:"prompt"}) — never a keystroke/PTY
   // path (the glance send_to_agent anti-pattern). Show the turn optimistically; the poll reconciles it.
@@ -249,10 +285,26 @@ export function IntervenePane({
           {unit.name}
         </span>
         <span className="shrink-0 text-[11px] text-muted-foreground/70">
-          {why.label}
+          {thread ? "Chat" : why.label}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
-          {unit.worktree &&
+          {thread && (
+            <button
+              type="button"
+              onClick={() => void promote()}
+              disabled={promoting}
+              title={
+                promoteErr ??
+                "Promote this chat into a working, landable unit — keeps the conversation, opens its worktree"
+              }
+              className="flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-2 text-[11px] font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <HugeiconsIcon icon={RocketIcon} size={13} />
+              {promoting ? "Promoting…" : "Promote to unit"}
+            </button>
+          )}
+          {!thread &&
+            unit.worktree &&
             (driving ? (
               <button
                 type="button"
@@ -328,75 +380,86 @@ export function IntervenePane({
           {takeover.error}
         </div>
       )}
+      {promoteErr && (
+        <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive">
+          {promoteErr}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {/* Why-stopped — the first thing you want when a unit needs you. */}
-        <div
-          className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-warning/40 bg-warning/10" : "border-border/60 bg-muted/40"}`}
-        >
-          <div
-            className={`text-[12px] font-medium ${why.needsHuman ? "text-warning-foreground" : "text-foreground/85"}`}
-          >
-            {why.label}
-          </div>
-          {why.detail && (
-            <div className="mt-0.5 text-[11px] text-muted-foreground">
-              {why.detail}
+        {/* A console chat leads with the conversation — no why-stopped/lease/diff chrome. A work
+            unit keeps all three (a promoted chat becomes one and gets them back). */}
+        {!thread && (
+          <>
+            {/* Why-stopped — the first thing you want when a unit needs you. */}
+            <div
+              className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-warning/40 bg-warning/10" : "border-border/60 bg-muted/40"}`}
+            >
+              <div
+                className={`text-[12px] font-medium ${why.needsHuman ? "text-warning-foreground" : "text-foreground/85"}`}
+              >
+                {why.label}
+              </div>
+              {why.detail && (
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {why.detail}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Who holds which file in this worktree (I04) — shared-workspace awareness. */}
-        <WorkspaceOverlay repo={unit.repo} />
+            {/* Who holds which file in this worktree (I04) — shared-workspace awareness. */}
+            <WorkspaceOverlay repo={unit.repo} />
 
-        {/* Changes — collapsible, so the conversation leads. */}
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setShowDiff((v) => !v)}
-            className="flex cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
-          >
-            <HugeiconsIcon
-              icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
-              size={12}
-            />
-            Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
-          </button>
-          {showDiff && diff && diff.length > 0 && (
-            <DiffViewToggle
-              view={diffView}
-              onView={setDiffView}
-              wrap={diffWrap}
-              onWrap={setDiffWrap}
-            />
-          )}
-        </div>
-        {showDiff && (
-          <div className="mb-3 flex flex-col gap-2">
-            {diffErr ? (
-              <div className="text-[11px] text-destructive">{diffErr}</div>
-            ) : diff === null ? (
-              <div className="flex flex-col gap-1.5" aria-hidden>
-                <Skeleton className="h-4 w-1/3 rounded" />
-                <Skeleton className="h-4 w-full rounded" />
-                <Skeleton className="h-4 w-11/12 rounded" />
-              </div>
-            ) : diff.length === 0 ? (
-              <div className="text-[11px] text-muted-foreground/70">
-                No uncommitted changes in the worktree.
-              </div>
-            ) : (
-              diff.map((fd) => (
-                <FleetDiffFile
-                  key={fd.file}
-                  fd={fd}
-                  view={diffView}
-                  wrap={diffWrap}
-                  onQuote={quoteToComposer}
+            {/* Changes — collapsible, so the conversation leads. */}
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDiff((v) => !v)}
+                className="flex cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
+              >
+                <HugeiconsIcon
+                  icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
+                  size={12}
                 />
-              ))
+                Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
+              </button>
+              {showDiff && diff && diff.length > 0 && (
+                <DiffViewToggle
+                  view={diffView}
+                  onView={setDiffView}
+                  wrap={diffWrap}
+                  onWrap={setDiffWrap}
+                />
+              )}
+            </div>
+            {showDiff && (
+              <div className="mb-3 flex flex-col gap-2">
+                {diffErr ? (
+                  <div className="text-[11px] text-destructive">{diffErr}</div>
+                ) : diff === null ? (
+                  <div className="flex flex-col gap-1.5" aria-hidden>
+                    <Skeleton className="h-4 w-1/3 rounded" />
+                    <Skeleton className="h-4 w-full rounded" />
+                    <Skeleton className="h-4 w-11/12 rounded" />
+                  </div>
+                ) : diff.length === 0 ? (
+                  <div className="text-[11px] text-muted-foreground/70">
+                    No uncommitted changes in the worktree.
+                  </div>
+                ) : (
+                  diff.map((fd) => (
+                    <FleetDiffFile
+                      key={fd.file}
+                      fd={fd}
+                      view={diffView}
+                      wrap={diffWrap}
+                      onQuote={quoteToComposer}
+                    />
+                  ))
+                )}
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {/* The live ACP conversation — the spine of intervention. */}
@@ -428,7 +491,11 @@ export function IntervenePane({
                 void steer();
               }
             }}
-            placeholder="Message this unit… (⌘/Ctrl+Enter to send)"
+            placeholder={
+              thread
+                ? "Message this thread… (⌘/Ctrl+Enter to send)"
+                : "Message this unit… (⌘/Ctrl+Enter to send)"
+            }
             rows={2}
             className="min-h-9 max-h-40 w-full resize-none bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
           />

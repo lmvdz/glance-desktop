@@ -61,6 +61,23 @@ export interface FleetUnit {
    *  ("PR closed without merging"); the daemon already folds `closed` into the `error` tier. */
   prState?: string;
   error?: string;
+  /** Which runtime backs this unit (`AgentKind` — "omp-operator" / "flue-service" / "workflow").
+   *  Carried only to classify a daemon "console" chat thread (E01) apart from a work unit — see
+   *  `spineReason.isConsoleThread`. Absent ⇒ treated as a plain work unit. */
+  kind?: string;
+  /** A console chat promoted into a working, landable unit (E02) — once true it is a work unit, not
+   *  a thread. Mirrors the daemon DTO's `promoted`; read by `isConsoleThread`. */
+  promoted?: boolean;
+  /** One-line "what it's doing right now" (tool name / activity) off the DTO — a de-jargon input, not
+   *  rendered raw (`spineReason.humanizeReason` maps leaked internal tokens like a workflow "escalate"
+   *  node id to operator words). */
+  activity?: string;
+  /** The daemon's last-5 SIGNIFICANT lifecycle transitions (capped tail already on every DTO). The
+   *  ONLY honest anchor for "time in current state": the `at` of the most recent transition whose
+   *  `to` is the current status is when the unit ENTERED that status (see `spineReason.stateSince`).
+   *  `startedAt` is a spawn-time stamp, never per-turn, so it would render a unit's AGE as its
+   *  working/waiting duration — the exact lie this replaces. Only `to`/`at` are read here. */
+  transitions?: Array<{ to: string; at: number }>;
   /** The daemon's ONE server-computed priority tier for this unit (t3-face concern 06 — rides every
    *  `GET /api/agents` DTO, viewer-personalized). The cockpit renders this verdict; it never
    *  computes its own. Absent only from a daemon that predates concern 06 → treated as `idle`. */
