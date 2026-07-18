@@ -1,9 +1,9 @@
 import { CodeIcon, HashtagIcon, TerminalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ReactNode } from "react";
+import { ComposerTrayChip } from "@/components/composer/ComposerTrayChip";
 import type { FileAttachment } from "../lib/composer";
 import type { Snippet } from "../lib/snippets";
-import { Chip } from "./Chip";
 
 type CommandChip = { name: string; label: string; icon: typeof HashtagIcon };
 
@@ -14,10 +14,12 @@ type Props = {
   onRemoveSnippet: (id: string) => void;
   commands: CommandChip[];
   onRemoveCommand: (name: string) => void;
-  /** Passive chips rendered before the attachment chips (e.g. cwd + branch). */
-  leading?: ReactNode;
 };
 
+/** Attachment chips for the AI composer's chip TRAY (rendered below the input by
+ *  ComposerShell — a plain <textarea> can't host t3's inline chips). Styled with the
+ *  ported t3 chip classes (composerInlineChip.ts), not the general-purpose `Chip`
+ *  component (which stays as-is elsewhere, e.g. the terminal's cwd/branch badges). */
 export function ChipsRow({
   files,
   onRemoveFile,
@@ -25,16 +27,14 @@ export function ChipsRow({
   onRemoveSnippet,
   commands,
   onRemoveCommand,
-  leading,
 }: Props) {
   const hasAttachments =
     files.length > 0 || snippets.length > 0 || commands.length > 0;
-  if (!leading && !hasAttachments) return null;
+  if (!hasAttachments) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {leading}
+    <>
       {commands.map((cmd) => (
-        <Chip
+        <ComposerTrayChip
           key={`cmd-${cmd.name}`}
           icon={cmd.icon}
           title={cmd.label}
@@ -42,22 +42,21 @@ export function ChipsRow({
           removeLabel="Remove command"
         >
           #{cmd.name}
-        </Chip>
+        </ComposerTrayChip>
       ))}
       {snippets.map((s) => (
-        <Chip
+        <ComposerTrayChip
           key={`snip-${s.id}`}
-          tone="primary"
           icon={HashtagIcon}
           title={s.description || s.name}
           onRemove={() => onRemoveSnippet(s.id)}
           removeLabel="Remove snippet"
         >
           {s.handle}
-        </Chip>
+        </ComposerTrayChip>
       ))}
       {files.map((f) => (
-        <Chip
+        <ComposerTrayChip
           key={f.id}
           iconNode={fileIcon(f)}
           onRemove={() => onRemoveFile(f.id)}
@@ -66,9 +65,9 @@ export function ChipsRow({
           {f.kind === "selection" && f.text ? (
             <span className="ml-1 opacity-60">· {selLineCount(f.text)}L</span>
           ) : null}
-        </Chip>
+        </ComposerTrayChip>
       ))}
-    </div>
+    </>
   );
 }
 
