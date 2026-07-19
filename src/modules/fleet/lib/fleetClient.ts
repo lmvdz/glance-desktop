@@ -275,12 +275,17 @@ export class FleetClient {
   async steer(
     id: string,
     message: string,
+    clientTurnId?: string,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
+    // clientTurnId round-trips through the daemon (it echoes it on the persisted user turn), so the
+    // optimistic bubble reconciles away instead of doubling every message (fleetTranscript
+    // reconcileOptimistic). Omitted when absent so non-optimistic callers (resume, daemonTransport)
+    // are unaffected.
     const res = await fleetFetch(`${this.config.baseUrl}/api/command`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ type: "prompt", id, message }),
+      body: JSON.stringify({ type: "prompt", id, message, ...(clientTurnId ? { clientTurnId } : {}) }),
       signal,
     });
     if (res.ok) return { ok: true };

@@ -85,6 +85,38 @@ describe("FleetClient.health", () => {
     expect((await client("t").markUnitSeen("gone")).ok).toBe(false);
   });
 
+  it("steer includes clientTurnId in the POST body so the optimistic turn reconciles", async () => {
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    await client("t").steer("unit-9", "hello", "turn-abc");
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:7878/api/command");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({
+      type: "prompt",
+      id: "unit-9",
+      message: "hello",
+      clientTurnId: "turn-abc",
+    });
+  });
+
+  it("steer omits clientTurnId when none is passed (non-optimistic callers unaffected)", async () => {
+    const spy = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(new Response("ok", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", spy);
+
+    await client("t").steer("unit-9", "hello");
+    expect(JSON.parse((spy.mock.calls[0][1]?.body as string) ?? "{}")).toEqual({
+      type: "prompt",
+      id: "unit-9",
+      message: "hello",
+    });
+  });
+
   it("sends a bearer header only when a token is present", async () => {
     const spy = vi.fn((_url: string, _init?: RequestInit) =>
       Promise.resolve(new Response("ok", { status: 200 })),

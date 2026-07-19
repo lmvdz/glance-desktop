@@ -154,6 +154,12 @@ export default defineConfig(async ({ mode }): Promise<UserConfig> => ({
       },
     },
   },
+  // Vitest scans **/*.test.* by default; a nested git worktree (.worktrees/<name>, e.g. a parked
+  // PR branch checked out under the repo) would otherwise get its test files swept into every run
+  // and fail on cross-worktree global/localStorage state pollution. Never scan nested worktrees.
+  test: {
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**", "**/src-tauri/**"],
+  },
   clearScreen: false,
   server: {
     port: 1420,

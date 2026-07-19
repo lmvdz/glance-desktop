@@ -173,7 +173,7 @@ export function IntervenePane({
     addOptimistic(message, clientTurnId);
     clearDraft(draftKey);
     try {
-      const res = await (await client(unit.daemonId)).steer(unit.id, message);
+      const res = await (await client(unit.daemonId)).steer(unit.id, message, clientTurnId);
       if (!res.ok) setSteerErr(res.detail ?? "steer failed");
     } catch (e) {
       setSteerErr(e instanceof Error ? e.message : "steer failed");
