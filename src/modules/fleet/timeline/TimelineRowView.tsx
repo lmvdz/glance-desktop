@@ -14,7 +14,7 @@ import {
   ToolsIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useRef, useState } from "react";
 import {
   Reasoning,
   ReasoningContent,
@@ -191,9 +191,9 @@ function ToolLine({ entry }: { entry: TranscriptEntry }) {
   const isError = Boolean(tool?.isError) || status === "error";
   const [expanded, setExpanded] = useState(false);
 
-  const { verb, subject, detail } = tool
+  const { verb, subject, detail, looksFailed } = tool
     ? presentTool(tool)
-    : { verb: "Tool", subject: "", detail: undefined };
+    : { verb: "Tool", subject: "", detail: undefined, looksFailed: undefined };
   // Backfill a missing subject from the entry's intent text (ACP kinds carry it there, not in args).
   const shownSubject = subject || intentFromEntryText(entry.displayText ?? entry.text, name);
 
@@ -249,6 +249,14 @@ function ToolLine({ entry }: { entry: TranscriptEntry }) {
         )}
         {isError && (
           <span className="shrink-0 text-[10px] font-medium text-destructive">failed</span>
+        )}
+        {!isError && looksFailed && (
+          <span
+            title="The harness reported ok, but the output tail reads like a failure"
+            className="shrink-0 text-[10px] font-medium text-warning"
+          >
+            failed?
+          </span>
         )}
       </Row>
       {expanded && canExpand && (
@@ -353,7 +361,9 @@ function WorkingRowView({ startedAt }: { startedAt: number | null }) {
   );
 }
 
-export function TimelineRowView({
+/** Memoized: effective only because ConversationView stabilizes row object identity across poll
+ *  ticks first (timeline/stableRows.ts) — memo without that pass is a silent no-op. */
+export const TimelineRowView = memo(function TimelineRowView({
   row,
   onToggleTurn,
   onToggleWorkGroup,
@@ -374,4 +384,4 @@ export function TimelineRowView({
     default:
       return null;
   }
-}
+});
