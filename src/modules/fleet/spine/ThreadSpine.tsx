@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
 import { FleetEmpty } from "../EmptyState";
 import { ladderReason, needsHuman } from "../lib/fleetLadder";
+import { startConsoleThread } from "../lib/startThread";
 import {
   canOpenUnitWorktree,
   getWorktreeOpener,
@@ -49,29 +50,15 @@ export function ThreadSpine() {
   const [creatingThread, setCreatingThread] = useState(false);
   const [threadErr, setThreadErr] = useState<string | null>(null);
 
-  // "New thread" (t3-face C13-F4): start a daemon console chat on the ACTIVE daemon, reusing
-  // FleetClient.createConsole (repo omitted → the daemon's own working repo), then select it and
-  // poll now so the row appears immediately instead of up to a ~2s cycle later.
+  // "New thread" (t3-face C13-F4): start a daemon console chat on the ACTIVE daemon and select
+  // it — one shared implementation with the hub hero's type-to-start (lib/startThread.ts).
   const newThread = async () => {
     if (creatingThread || !activeId) return;
     setCreatingThread(true);
     setThreadErr(null);
-    try {
-      const c = await client(activeId);
-      const id = await c.createConsole();
-      if (!id) {
-        setThreadErr("Couldn't start a new thread on this daemon.");
-        return;
-      }
-      // Poll BEFORE selecting: the new thread must be in the roster first, or FleetLayout's
-      // "selected unit vanished" cleanup would immediately deselect a key it can't yet find.
-      await refresh();
-      select(`${activeId}:${id}`);
-    } catch (e) {
-      setThreadErr(e instanceof Error ? e.message : "Couldn't start a new thread.");
-    } finally {
-      setCreatingThread(false);
-    }
+    const res = await startConsoleThread({ client, activeId, refresh, select });
+    if (!res.ok) setThreadErr(res.reason);
+    setCreatingThread(false);
   };
 
   useEffect(() => {
