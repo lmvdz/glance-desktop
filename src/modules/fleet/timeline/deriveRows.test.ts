@@ -4,6 +4,7 @@ import {
   MAX_VISIBLE_WORK_LOG_ENTRIES,
   deriveMinimapDots,
   deriveTimelineRows,
+  isDelegationEntry,
   formatDuration,
   type TimelineRow,
   workingForLabel,
@@ -300,5 +301,40 @@ describe("deriveMinimapDots — positioned by array index, not seq", () => {
 
   it("is empty when there are no user entries", () => {
     expect(deriveMinimapDots([e({ kind: "assistant", ts: 0 })])).toEqual([]);
+  });
+});
+
+describe("delegation entries break work-run collapsing (r3 borrow 2)", () => {
+  const del = (id: string, name = "task") =>
+    e({ id, kind: "tool", ts: 1, status: "ok", tool: { name } });
+  const t = (id: string) =>
+    e({ id, kind: "tool", ts: 1, status: "ok", tool: { name: "read" } });
+
+  it("a task call in the middle of a tool run gets its own always-visible row", () => {
+    const entries = [e({ id: "u", kind: "user", ts: 0 }), t("t1"), t("t2"), del("d1"), t("t3")];
+    const rows = deriveTimelineRows(entries);
+    const work = rows.filter((r): r is Extract<TimelineRow, { kind: "work" }> => r.kind === "work");
+    // three runs: [t1,t2] (collapsed to 1 visible + 1 hidden), [d1] alone, [t3]
+    expect(work).toHaveLength(3);
+    expect(work[0].hidden.map((x) => x.id)).toEqual(["t1"]);
+    expect(work[0].visible.map((x) => x.id)).toEqual(["t2"]);
+    expect(work[1].visible.map((x) => x.id)).toEqual(["d1"]);
+    expect(work[1].hidden).toEqual([]);
+    expect(work[1].expanded).toBe(true);
+    expect(work[2].visible.map((x) => x.id)).toEqual(["t3"]);
+  });
+
+  it("a long run of delegations never collapses behind +N", () => {
+    const entries = [e({ id: "u", kind: "user", ts: 0 }), del("d1"), del("d2", "agent"), del("d3", "workflow")];
+    const rows = deriveTimelineRows(entries);
+    const work = rows.filter((r): r is Extract<TimelineRow, { kind: "work" }> => r.kind === "work");
+    expect(work).toHaveLength(3);
+    for (const w of work) expect(w.hidden).toEqual([]);
+  });
+
+  it("isDelegationEntry keys off the tool name, case-insensitively, and never non-tools", () => {
+    expect(isDelegationEntry(del("x", "Task"))).toBe(true);
+    expect(isDelegationEntry(t("y"))).toBe(false);
+    expect(isDelegationEntry(e({ kind: "assistant", ts: 0 }))).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TranscriptTool } from "../lib/fleetTranscript";
-import { presentTool } from "./toolPresenter";
+import { presentTool, resultSuggestsFailure, unwrapShellCommand } from "./toolPresenter";
 
 function tool(over: Partial<TranscriptTool> & { name: string }): TranscriptTool {
   return { ...over };
@@ -171,5 +171,58 @@ describe("presentTool", () => {
     // ACP 'execute'/'read' kinds with no args → verb resolves, subject empty
     expect(presentTool(tool({ name: "execute" }))).toEqual({ verb: "Ran", subject: "" });
     expect(presentTool(tool({ name: "read" }))).toEqual({ verb: "Read", subject: "" });
+  });
+});
+
+describe("unwrapShellCommand — shell-wrapper unwrapping (r3 borrow 2)", () => {
+  it("unwraps bash -lc with double quotes", () => {
+    expect(unwrapShellCommand('bash -lc "tsc --noEmit"')).toBe("tsc --noEmit");
+  });
+  it("unwraps bash -c with single quotes", () => {
+    expect(unwrapShellCommand("bash -c 'git status --short'")).toBe("git status --short");
+  });
+  it("unwraps split flag clusters (-l -c) and unquoted commands", () => {
+    expect(unwrapShellCommand("sh -l -c pnpm test")).toBe("pnpm test");
+  });
+  it("unwraps pwsh -Command and cmd /c", () => {
+    expect(unwrapShellCommand('pwsh -NoProfile -Command "Get-ChildItem"')).toBe("Get-ChildItem");
+    expect(unwrapShellCommand("cmd.exe /C dir")).toBe("dir");
+  });
+  it("unwraps one nested layer, capped", () => {
+    expect(unwrapShellCommand(`bash -lc "sh -c 'echo hi'"`)).toBe("echo hi");
+  });
+  it("leaves a bare bash invocation without -c alone (interactive/login shells)", () => {
+    expect(unwrapShellCommand("bash -l")).toBe("bash -l");
+    expect(unwrapShellCommand("bash script.sh")).toBe("bash script.sh");
+  });
+  it("leaves ordinary commands untouched", () => {
+    expect(unwrapShellCommand("cargo build --release")).toBe("cargo build --release");
+  });
+  it("presentTool applies the unwrap so the row reads the inner command", () => {
+    const p = presentTool(tool({ name: "bash", args: { command: 'bash -lc "tsc --noEmit"' } }));
+    expect(p.subject).toBe("tsc --noEmit");
+  });
+});
+
+describe("resultSuggestsFailure — command-family failure heuristic (r3 borrow 2)", () => {
+  it("flags 'command not found' / ENOENT / nonzero exit in the result tail", () => {
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "zsh: command not found: tscc" }))).toBe(true);
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "spawn tsc ENOENT" }))).toBe(true);
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "…\nProcess exited with code 2" }))).toBe(true);
+  });
+  it("does not flag a clean result, an exit code 0, or an explicit error (already handled)", () => {
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "654 passed" }))).toBe(false);
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "exited with code 0" }))).toBe(false);
+    expect(resultSuggestsFailure(tool({ name: "bash", isError: true, resultText: "ENOENT" }))).toBe(false);
+  });
+  it("only reads the tail — an early mention scrolled far above the end does not flag", () => {
+    const result = `note: 'ENOENT' can appear in logs\n${"ok line\n".repeat(200)}done`;
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: result }))).toBe(false);
+  });
+  it("surfaces as looksFailed on the presentation only for the command family", () => {
+    const bash = presentTool(tool({ name: "bash", args: { command: "tscc" }, resultText: "command not found" }));
+    expect(bash.looksFailed).toBe(true);
+    const read = presentTool(tool({ name: "read", args: { path: "a.md" }, resultText: "command not found" }));
+    expect(read.looksFailed).toBeUndefined();
   });
 });
