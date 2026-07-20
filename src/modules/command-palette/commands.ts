@@ -6,8 +6,10 @@ import {
 import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs";
 import { leafIds } from "@/modules/terminal";
 import {
+  AngryIcon,
   Cancel01Icon,
   DashboardSquare01Icon,
+  DatabaseIcon,
   FileEditIcon,
   FileSearchIcon,
   Globe02Icon,
@@ -59,6 +61,7 @@ export type CommandPaletteActionContext = {
   openNewPrivate: () => void;
   openNewEditor: () => void;
   openNewPreview: () => void;
+  openFrictionCapture: () => void;
   openGitGraph: () => void;
   toggleSourceControl: () => void;
   closeActiveTabOrPane: () => void;
@@ -140,6 +143,15 @@ export function createCommandItems(
       keywords: ["keys", "keybindings", "settings"],
       icon: KeyboardIcon,
       run: ctx.openKeyboardShortcuts,
+    },
+    {
+      id: "fleet.grr",
+      title: "Capture friction (grr)",
+      group: "General",
+      keywords: ["grr", "friction", "gripe", "feedback", "dogfood", "annoyed"],
+      icon: AngryIcon,
+      shortcutId: "fleet.grr",
+      run: ctx.openFrictionCapture,
     },
     {
       id: "spaces.overview",
@@ -292,6 +304,23 @@ export function createCommandItems(
       keywords: ["grep", "ripgrep", "text", "contents", "search in files"],
       icon: FileSearchIcon,
       trailing: "#",
+      run: noop,
+    },
+    {
+      id: "fabric.search",
+      title: "Search knowledge base",
+      group: "Search",
+      keywords: [
+        "fabric",
+        "kb",
+        "knowledge",
+        "decisions",
+        "digests",
+        "fleet",
+        "context",
+      ],
+      icon: DatabaseIcon,
+      trailing: "@",
       run: noop,
     },
     {
