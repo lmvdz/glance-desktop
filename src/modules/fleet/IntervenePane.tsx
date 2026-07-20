@@ -381,7 +381,11 @@ export function IntervenePane({
         )}
 
         <div className="min-h-0 flex-1">
+          {/* Keyed per unit: scroll mode, anchor, and fold expansion are per-conversation state —
+              without the key a unit switch inherits the previous unit's anchoring mode (stranding
+              the new transcript unscrolled) and its turn-fold expansion by colliding ids. */}
           <ConversationView
+            key={draftKey}
             entries={entries}
             loading={!transcriptLoaded}
             footer={

@@ -249,6 +249,15 @@ export function ConversationView({
     <div
       ref={containerRef}
       className="relative h-full overflow-y-auto overscroll-contain px-3 py-3"
+      // Wheel/touch are unambiguous USER intent — clear the programmatic-scroll suppression so a
+      // gesture landing inside the window still exits anchoring instead of being snapped back by
+      // the next poll's re-pin.
+      onWheel={() => {
+        suppressUntilRef.current = 0;
+      }}
+      onTouchMove={() => {
+        suppressUntilRef.current = 0;
+      }}
       onScroll={(ev) => {
         if (performance.now() < suppressUntilRef.current) return;
         const el = ev.currentTarget;
