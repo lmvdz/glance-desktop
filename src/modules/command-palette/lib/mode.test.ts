@@ -21,6 +21,13 @@ describe("parseQuery", () => {
     });
   });
 
+  it("routes @ to fabric (knowledge base) search", () => {
+    expect(parseQuery("@ token rotation")).toMatchObject({
+      mode: "fabric",
+      term: "token rotation",
+    });
+  });
+
   it("routes ? to help", () => {
     expect(parseQuery("?")).toMatchObject({ mode: "help", term: "" });
   });

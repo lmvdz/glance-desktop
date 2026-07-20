@@ -38,7 +38,7 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
-import { setWorktreeOpener } from "@/modules/fleet";
+import { GrrModal, resolveGrrRepo, setWorktreeOpener } from "@/modules/fleet";
 import { type FleetUnit, unitKey } from "@/modules/fleet/lib/fleetRoster";
 import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
 import { useFleetRoster } from "@/modules/fleet/store/fleetRosterStore";
@@ -337,6 +337,7 @@ export default function App() {
   } = useSidebarPanel(explorerRef);
 
   const [newEditorOpen, setNewEditorOpen] = useState(false);
+  const [grrOpen, setGrrOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [paletteInitialMode, setPaletteInitialMode] = useState<
     "commands" | "content"
@@ -410,6 +411,24 @@ export default function App() {
   );
 
   useWindowTitle(activeTab, explorerRoot);
+
+  // The repo a friction gripe (C3) is filed against — the selected fleet unit's repo when the hub
+  // (fleet) shell is visible, else the active workspace cwd. Resolved lazily off store snapshots
+  // when the modal opens so App never re-renders on the 2s roster poll just to keep this current.
+  // (The pre-hub-shell "fleet" TAB kind is gone — hub visibility is the fleet-surface signal now.)
+  const grrRepo = useMemo(() => {
+    if (!grrOpen) return null;
+    const selectedId = useFleetSelection.getState().selectedId;
+    const units = useFleetRoster.getState().units;
+    const selectedUnit = selectedId
+      ? units.find((u) => unitKey(u) === selectedId)
+      : undefined;
+    return resolveGrrRepo({
+      fleetTabActive: hubVisible,
+      selectedUnitRepo: selectedUnit?.repo ?? null,
+      workspaceCwd: explorerRoot,
+    });
+  }, [grrOpen, hubVisible, explorerRoot]);
 
   useEffect(() => {
     setActiveSearchAddon(
@@ -841,6 +860,7 @@ export default function App() {
         const t = nextAttentionTarget();
         if (t) activateAgentTarget(t.tabId, t.leafId);
       },
+      "fleet.grr": () => setGrrOpen(true),
       "settings.open": () => void openSettingsWindow(),
       "sidebar.toggle": toggleSidebar,
       "explorer.focus": toggleExplorerFocus,
@@ -1189,6 +1209,7 @@ export default function App() {
             openNewPrivate: openNewPrivateTab,
             openNewEditor: () => setNewEditorOpen(true),
             openNewPreview: () => openPreviewTab(""),
+            openFrictionCapture: () => setGrrOpen(true),
             openGitGraph: openGitGraphFromContext,
             toggleSourceControl,
             closeActiveTabOrPane: handleCloseTabOrPane,
@@ -1433,6 +1454,8 @@ export default function App() {
         onActivate={onActivateAgent}
       />
       <Toaster position="bottom-right" />
+
+      <GrrModal open={grrOpen} onOpenChange={setGrrOpen} repo={grrRepo} />
 
       {hasComposer ? (
         <>

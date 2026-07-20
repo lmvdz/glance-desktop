@@ -11,8 +11,28 @@ export type FleetHealth =
   | { status: "unauthorized"; detail: string }
   | { status: "unreachable"; detail: string };
 
-/** Thrown by roster() on 401/403 so the poller can distinguish auth failure from unreachable. */
+/** Thrown by roster()/fabricSearch() on 401/403 so callers can distinguish auth failure from unreachable. */
 export class FleetAuthError extends Error {}
+
+/** Outcome of a friction capture (C3 "grr"). `unauthorized` is split out so the modal can show the
+ *  "check the token in Settings → Fleet" copy — POST /api/friction is operator-tier. */
+export type GrrResult =
+  | { ok: true }
+  | { ok: false; unauthorized: boolean; detail: string };
+
+/** One ranked hit from GET /api/fabric/search (C4). Mirrors the daemon's `FabricSearchResult`
+ *  (omp-squad src/fabric-search.ts). `type` is a KB doc type — decision / hot-area / digest /
+ *  agent / scout / lease / failure / symptom / episode / answer. */
+export interface FabricHit {
+  type: string;
+  id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  repo?: string;
+  ref?: string;
+  source?: string;
+}
 
 export interface FleetClientConfig {
   /** e.g. "http://127.0.0.1:7878" — no trailing slash. */
@@ -265,6 +285,64 @@ export class FleetClient {
       agentId?: string;
     } | null;
     return body?.agentId ?? null;
+  }
+
+  /**
+   * Capture a dogfooding gripe (C3 "grr") — POST /api/friction {repo, context:"desktop", gripe},
+   * the same body shape `glance grr` and the daemon TUI's Ctrl-G send. Operator-tier, so a daemon
+   * with auth configured answers 401/403 without a valid token; that's surfaced distinctly so the
+   * modal can point the user at Settings → Fleet rather than reading as a generic failure.
+   */
+  async grr(
+    repo: string,
+    gripe: string,
+    signal?: AbortSignal,
+  ): Promise<GrrResult> {
+    const res = await fleetFetch(`${this.config.baseUrl}/api/friction`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ repo, context: "desktop", gripe }),
+      signal,
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 401 || res.status === 403) {
+      return {
+        ok: false,
+        unauthorized: true,
+        detail: `daemon refused the token (${res.status}) — check the token in Settings → Fleet`,
+      };
+    }
+    return {
+      ok: false,
+      unauthorized: false,
+      detail: `${res.status}: ${await res.text().catch(() => "friction capture failed")}`,
+    };
+  }
+
+  /**
+   * Search the fleet knowledge base (C4) — GET /api/fabric/search?q&topK → {query, results}. The
+   * daemon BM25-ranks the context fabric and returns the top `topK` hits (default 20). Throws a
+   * tagged error on 401/403 (viewer-tier, but a token-guarded daemon still refuses) so the hook
+   * surfaces an auth failure; throws on any other non-2xx / transport failure.
+   */
+  async fabricSearch(
+    q: string,
+    opts: { topK?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<FabricHit[]> {
+    const topK = opts.topK ?? 20;
+    const res = await this.get(
+      `/api/fabric/search?q=${encodeURIComponent(q)}&topK=${topK}`,
+      signal,
+    );
+    if (res.status === 401 || res.status === 403) {
+      throw new FleetAuthError(`daemon refused the token (${res.status})`);
+    }
+    if (!res.ok) throw new Error(`fabric search failed: ${res.status}`);
+    const body = (await res.json().catch(() => null)) as {
+      results?: FabricHit[];
+    } | null;
+    return Array.isArray(body?.results) ? body.results : [];
   }
 
   /**
