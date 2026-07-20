@@ -1,26 +1,20 @@
 import {
-  ArrowDown01Icon,
   ArrowLeft02Icon,
-  ArrowRight01Icon,
   FolderOpenIcon,
   Logout03Icon,
   RocketIcon,
   UserSharingIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ComposerShell } from "@/components/composer/ComposerShell";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ContextRing } from "@/components/composer/ContextRing";
 import { ConfirmPill } from "./ConfirmPill";
 import { ConversationView } from "./ConversationView";
-import {
-  DiffFile,
-  type DiffViewMode,
-  DiffViewToggle,
-  type QuotePayload,
-  parseUnifiedDiff,
-} from "./diffs";
+import { ChangedFilesCard } from "./diffs/ChangedFilesCard";
+import type { QuotePayload } from "./diffs";
 import { type FleetFileDiff, normalizeDiff, whyStopped } from "./lib/fleetIntervene";
+import { ModeChip } from "./ModeChip";
 import { type FleetUnit, unitKey } from "./lib/fleetRoster";
 import {
   IDLE_TAKEOVER,
@@ -36,32 +30,6 @@ import { WorkspaceOverlay } from "./WorkspaceOverlay";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetTranscript } from "./store/fleetTranscriptStore";
 import { useSteerDraftStore } from "./store/fleetSteerDraftStore";
-
-function FleetDiffFile({
-  fd,
-  view,
-  wrap,
-  onQuote,
-}: {
-  fd: FleetFileDiff;
-  view: DiffViewMode;
-  wrap: boolean;
-  onQuote: (p: QuotePayload) => void;
-}) {
-  // Daemon serves a per-file unified-diff string; parse once per file.
-  const parsed = useMemo(() => parseUnifiedDiff(fd.diff), [fd.diff]);
-  return (
-    <DiffFile
-      file={fd.file}
-      status={fd.status}
-      parsed={parsed}
-      raw={fd.diff}
-      view={view}
-      wrap={wrap}
-      onQuote={onQuote}
-    />
-  );
-}
 
 // The task steered into a console chat when it's promoted into a working unit (E02) — mirrors the AI
 // chat's PromoteToUnitButton so the two promote paths ask the agent for the same thing.
@@ -83,9 +51,6 @@ export function IntervenePane({
   const client = useFleetConnection((s) => s.client);
   const [diff, setDiff] = useState<FleetFileDiff[] | null>(null);
   const [diffErr, setDiffErr] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState(false);
-  const [diffView, setDiffView] = useState<DiffViewMode>("unified");
-  const [diffWrap, setDiffWrap] = useState(false);
   // Draft text lives in a persisted store keyed per unit (M02's daemonId:id key), NOT local
   // state — the law-5 fix. A plain useState here is exactly what used to lose the human's
   // half-typed instruction the instant RosterView force-clears selection and this pane
@@ -386,11 +351,16 @@ export function IntervenePane({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {/* A console chat leads with the conversation — no why-stopped/lease/diff chrome. A work
-            unit keeps all three (a promoted chat becomes one and gets them back). */}
+      {/* r3 restructure (plans/research-t3code round 3): the conversation OWNS the scroll (its
+          three-mode anchoring needs the container — see ConversationView), the why-stopped card
+          and workspace overlay pin above it as t3 pins its thread banners, and the old buried
+          "Changes" accordion is replaced by the Changed-files card rendered INSIDE the
+          conversation flow after the last turn (hub-shell H3). A console chat stays chrome-free. */}
+      <div className="flex min-h-0 flex-1 flex-col">
         {!thread && (
-          <>
+          // Bounded: a multiline daemon error or a long lease list must never starve the
+          // conversation below — past 40% of the pane this prelude scrolls internally.
+          <div className="max-h-[40%] shrink-0 overflow-y-auto px-3 pt-3">
             {/* Why-stopped — the first thing you want when a unit needs you. */}
             <div
               className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-warning/40 bg-warning/10" : "border-border/60 bg-muted/40"}`}
@@ -409,64 +379,29 @@ export function IntervenePane({
 
             {/* Who holds which file in this worktree (I04) — shared-workspace awareness. */}
             <WorkspaceOverlay repo={unit.repo} />
-
-            {/* Changes — collapsible, so the conversation leads. */}
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDiff((v) => !v)}
-                className="flex cursor-pointer items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:text-foreground/75"
-              >
-                <HugeiconsIcon
-                  icon={showDiff ? ArrowDown01Icon : ArrowRight01Icon}
-                  size={12}
-                />
-                Changes{diff && diff.length > 0 ? ` (${diff.length})` : ""}
-              </button>
-              {showDiff && diff && diff.length > 0 && (
-                <DiffViewToggle
-                  view={diffView}
-                  onView={setDiffView}
-                  wrap={diffWrap}
-                  onWrap={setDiffWrap}
-                />
-              )}
-            </div>
-            {showDiff && (
-              <div className="mb-3 flex flex-col gap-2">
-                {diffErr ? (
-                  <div className="text-[11px] text-destructive">{diffErr}</div>
-                ) : diff === null ? (
-                  <div className="flex flex-col gap-1.5" aria-hidden>
-                    <Skeleton className="h-4 w-1/3 rounded" />
-                    <Skeleton className="h-4 w-full rounded" />
-                    <Skeleton className="h-4 w-11/12 rounded" />
-                  </div>
-                ) : diff.length === 0 ? (
-                  <div className="text-[11px] text-muted-foreground/70">
-                    No uncommitted changes in the worktree.
-                  </div>
-                ) : (
-                  diff.map((fd) => (
-                    <FleetDiffFile
-                      key={fd.file}
-                      fd={fd}
-                      view={diffView}
-                      wrap={diffWrap}
-                      onQuote={quoteToComposer}
-                    />
-                  ))
-                )}
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        {/* The live ACP conversation — the spine of intervention. */}
-        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-          Conversation
+        <div className="min-h-0 flex-1">
+          {/* Keyed per unit: scroll mode, anchor, and fold expansion are per-conversation state —
+              without the key a unit switch inherits the previous unit's anchoring mode (stranding
+              the new transcript unscrolled) and its turn-fold expansion by colliding ids. */}
+          <ConversationView
+            key={draftKey}
+            entries={entries}
+            loading={!transcriptLoaded}
+            footer={
+              !thread ? (
+                <ChangedFilesCard
+                  unitKey={draftKey}
+                  diff={diff}
+                  error={diffErr}
+                  onQuote={quoteToComposer}
+                />
+              ) : undefined
+            }
+          />
         </div>
-        <ConversationView entries={entries} loading={!transcriptLoaded} />
       </div>
 
       {/* Steer composer — t3 glass shell shared with the AI chat composer (see
@@ -480,6 +415,27 @@ export function IntervenePane({
           onSend={() => void steer()}
           onStop={() => void stopUnit()}
           sendTitle="Send (⌘/Ctrl+Enter)"
+          footerLeft={
+            <ModeChip
+              key={draftKey}
+              mode={unit.autonomyMode}
+              onSetMode={async (mode) => {
+                const c = await client(unit.daemonId);
+                const res = await c.setMode(unit.id, mode, "operator set mode from the composer");
+                if (!res.ok) {
+                  setSteerErr(`Couldn't set mode (${res.detail ?? "daemon rejected it"})`);
+                  throw new Error(res.detail ?? "setMode failed");
+                }
+              }}
+            />
+          }
+          footerRight={
+            <ContextRing
+              pct={unit.contextPct}
+              costUsd={unit.receipt?.costUsd}
+              tokens={unit.receipt?.tokens}
+            />
+          }
         >
           <textarea
             ref={composerRef}

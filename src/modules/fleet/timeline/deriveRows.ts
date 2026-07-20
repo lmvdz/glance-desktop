@@ -133,9 +133,32 @@ function groupByTurn(entries: TranscriptEntry[]): TurnGroup[] {
   return groups;
 }
 
+/** Tool names that mean "delegated to another agent" — a subagent/task call is a narrative beat,
+ *  not routine tool noise, so it must never disappear behind a "+N previous tool calls" toggle.
+ *  Mirrors t3code's `isTaskActivity` collapse-exclusion (session-logic.ts, © 2026 T3 Tools Inc.,
+ *  MIT License) in glance's vocabulary. */
+const DELEGATION_TOOL_NAMES = new Set([
+  "task",
+  "job",
+  "agent",
+  "subagent",
+  "delegate",
+  "spawn",
+  "spawn_agent",
+  "run_agent",
+  "workflow",
+]);
+
+export function isDelegationEntry(e: TranscriptEntry): boolean {
+  if (e.kind !== "tool" || !e.tool) return false;
+  return DELEGATION_TOOL_NAMES.has((e.tool.name ?? "").trim().toLowerCase());
+}
+
 /** Group a flat run of entries into rows: consecutive `kind:"tool"` entries collapse into one
  *  `work` row (only the last MAX_VISIBLE_WORK_LOG_ENTRIES shown, rest behind a toggle); everything
- *  else becomes its own `message` row, in order. Used both for an unfolded (prelude/last-turn) run
+ *  else becomes its own `message` row, in order. Delegation entries (see `isDelegationEntry`) BREAK
+ *  a run: each gets its own always-visible single-entry work row, so a spawned subagent is never
+ *  hidden as "one of N previous tool calls". Used both for an unfolded (prelude/last-turn) run
  *  and for a folded turn's hidden entries once expanded. */
 function pushFlatRows(
   rows: TimelineRow[],
@@ -147,8 +170,26 @@ function pushFlatRows(
   while (i < items.length) {
     const item = items[i];
     if (item.entry.kind === "tool") {
+      if (isDelegationEntry(item.entry)) {
+        const groupId = `work:${turnIndex}:${rowKeyForEntry(item.entry, item.arrayIndex)}`;
+        rows.push({
+          kind: "work",
+          id: groupId,
+          groupId,
+          visible: [item.entry],
+          hidden: [],
+          expanded: true,
+        });
+        i += 1;
+        continue;
+      }
       const runStart = i;
-      while (i < items.length && items[i].entry.kind === "tool") i += 1;
+      while (
+        i < items.length &&
+        items[i].entry.kind === "tool" &&
+        !isDelegationEntry(items[i].entry)
+      )
+        i += 1;
       const run = items.slice(runStart, i);
       const groupId = `work:${turnIndex}:${rowKeyForEntry(run[0].entry, run[0].arrayIndex)}`;
       if (run.length <= MAX_VISIBLE_WORK_LOG_ENTRIES) {

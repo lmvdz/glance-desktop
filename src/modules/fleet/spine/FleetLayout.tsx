@@ -9,7 +9,6 @@
 // status and a recovery card in the detail slot, never a full-pane modal that hides the shape.
 
 import {
-  CursorMagicSelection02Icon,
   Loading03Icon,
   LockKeyIcon,
   PlugSocketIcon,
@@ -20,6 +19,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect } from "react";
 import { openSettingsWindow } from "@/modules/settings/openSettingsWindow";
+import { HubHero } from "../HubHero";
 import { IntervenePane } from "../IntervenePane";
 import { FleetEmpty } from "../EmptyState";
 import { canOpenUnitWorktree } from "../lib/worktreeOpener";
@@ -154,17 +154,8 @@ function OfflineDetail({ status }: { status: OfflineStatus }) {
   );
 }
 
-function EmptyDetail() {
-  return (
-    <div className="flex h-full w-full items-center justify-center">
-      <FleetEmpty
-        icon={CursorMagicSelection02Icon}
-        title="Select a unit"
-        description="Pick a unit or session on the left to see why it stopped, review its diff, and steer it."
-      />
-    </div>
-  );
-}
+// No selection → the hub hero (r3 borrow 6): "What should we build?" + a composer that starts a
+// thread on the active daemon — the on-ramp gesture, not a passive "Select a unit" card.
 
 export function FleetLayout() {
   const status = useFleetConnection((s) => s.status);
@@ -223,7 +214,7 @@ export function FleetLayout() {
             onBack={() => select(null)}
           />
         ) : (
-          <EmptyDetail />
+          <HubHero />
         )}
       </div>
     </div>

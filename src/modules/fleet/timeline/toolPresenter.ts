@@ -23,6 +23,10 @@ export interface ToolPresentation {
   subject: string;
   /** An optional calm qualifier ("in packages/dagon", "5 results") — never the raw args JSON. */
   detail?: string;
+  /** True when a command tool reported ok but its output tail reads like a failure (nonzero exit,
+   *  command not found, ENOENT) — t3's `toolDetailTextLooksLikeFailure` heuristic, scoped to the
+   *  command family only so file contents echoed by read tools can never false-positive. */
+  looksFailed?: boolean;
 }
 
 const SUBJECT_MAX = 140;
@@ -109,6 +113,93 @@ const PATH_KEYS = ["path", "file_path", "filename", "filePath", "target_file", "
 const PATTERN_KEYS = ["pattern", "query", "regex", "q", "search"];
 const COMMAND_KEYS = ["command", "cmd", "script", "run"];
 
+/** Strip one layer of matching quotes off a shell-wrapped inner command. */
+function stripMatchingQuotes(value: string): string {
+  const s = value.trim();
+  if (s.length >= 2) {
+    const first = s[0];
+    if ((first === '"' || first === "'") && s[s.length - 1] === first) {
+      return s.slice(1, -1);
+    }
+  }
+  return s;
+}
+
+// Shell wrappers, in match order. POSIX shells only unwrap when the flag cluster carries `c`
+// (bash -lc/-c/-l -c…); `pwsh -Command`/`cmd /c` are explicit. Ported shape from t3code's
+// `unwrapKnownShellCommandWrapper` (session-logic.ts, © 2026 T3 Tools Inc., MIT License).
+const POSIX_WRAPPER_RE = /^\s*(?:bash|sh|zsh|dash)((?:\s+-[a-zA-Z]+)+)\s+([\s\S]+)$/;
+const PWSH_WRAPPER_RE =
+  /^\s*(?:pwsh|powershell)(?:\.exe)?\s+(?:-\w+\s+)*-c(?:ommand)?\s+([\s\S]+)$/i;
+const CMD_WRAPPER_RE = /^\s*cmd(?:\.exe)?\s+\/[cC]\s+([\s\S]+)$/;
+
+/**
+ * Unwrap known shell-wrapper invocations so the row reads the INNER command — glance transcripts
+ * are full of `bash -lc "tsc --noEmit"` rows that should present as `tsc --noEmit`. The full
+ * wrapped text still lives in the expand fold. Unwraps repeatedly (capped) for nested wrappers.
+ */
+export function unwrapShellCommand(command: string): string {
+  let current = command.trim();
+  for (let pass = 0; pass < 3; pass += 1) {
+    const posix = POSIX_WRAPPER_RE.exec(current);
+    if (posix?.[1].replace(/[\s-]/g, "").includes("c")) {
+      current = stripMatchingQuotes(posix[2]);
+      continue;
+    }
+    const pwsh = PWSH_WRAPPER_RE.exec(current);
+    if (pwsh) {
+      current = stripMatchingQuotes(pwsh[1]);
+      continue;
+    }
+    const cmd = CMD_WRAPPER_RE.exec(current);
+    if (cmd) {
+      current = stripMatchingQuotes(cmd[1]);
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+/** The failure heuristic reads only the LAST few non-empty lines — failures announce themselves
+ *  at the end of output, and a whole-result scan false-positives on quoted content (a passing
+ *  test asserting on "command not found", a grep for ENOENT). */
+const FAILURE_SCAN_TAIL_LINES = 2;
+
+// Deliberately narrow: each pattern is a recognizable SHELL/RUNTIME DIAGNOSTIC LINE FORM, not a
+// bare phrase — `sh: tscc: command not found`, `cat: x: No such file or directory`,
+// `spawn tsc ENOENT`, `Process exited with code 2` — so command output that merely CONTAINS the
+// words (rg hits, test logs, printf) stays clean. A false negative costs nothing (the badge is a
+// bonus over the harness status); a false positive lies about a successful command.
+const FAILURE_TAIL_PATTERNS: RegExp[] = [
+  /(?:^|[/\w.-]+:\s*)(?:[\w./-]+:\s*)?command not found/i,
+  /\bnot found: [\w./-]+$/i,
+  /[\w./'"-]+:\s*No such file or directory/i,
+  /\bspawn(?:Sync)? \S+ ENOENT\b/,
+  /is not recognized as (?:an internal or external command|the name of a cmdlet)/i,
+  /exit(?:ed)?(?: with)? (?:status|code):? [1-9]\d*/i,
+  /non-zero exit/i,
+];
+
+function tailLines(text: string, count: number): string[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.slice(-count);
+}
+
+/**
+ * True when a command tool's SETTLED output tail reads like a failure even though the harness
+ * reported ok — harnesses routinely mark a ran-but-failed command as a successful tool call (the
+ * tool DID run). Only ever consulted for the command family; never overrides an explicit error
+ * status; ignores streaming partials (a mid-stream match would flicker the badge).
+ */
+export function resultSuggestsFailure(tool: TranscriptTool): boolean {
+  if (tool.isError) return false; // already an explicit failure — nothing to suggest
+  const result = tool.resultText;
+  if (!result) return false;
+  const tail = tailLines(result, FAILURE_SCAN_TAIL_LINES);
+  return tail.some((line) => FAILURE_TAIL_PATTERNS.some((re) => re.test(line)));
+}
+
 /** Map an MCP tool id ("mcp__plane_list_work_items") to a calm "Plane · list work items". */
 function presentMcp(name: string, tool: TranscriptTool): ToolPresentation {
   const rest = name.slice("mcp__".length);
@@ -144,7 +235,8 @@ export function presentTool(tool: TranscriptTool): ToolPresentation {
       const command = pick(args, COMMAND_KEYS) ?? "";
       const cwd = pick(args, ["cwd", "workdir", "directory"]);
       const detail = cwd && cwd !== "." && cwd !== "./" ? `in ${cwd}` : undefined;
-      return { verb: "Ran", subject: truncate(command), detail };
+      const looksFailed = resultSuggestsFailure(tool) || undefined;
+      return { verb: "Ran", subject: truncate(unwrapShellCommand(command)), detail, looksFailed };
     }
     case "read":
     case "read_file":
