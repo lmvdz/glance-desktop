@@ -101,7 +101,7 @@ export function createDaemonChatTransport(deps: DaemonTransportDeps) {
         }
 
         // 3. Steer the user's turn into the same ACP session.
-        const res = await client.steer(unitId, text, signal);
+        const res = await client.steer(unitId, text, undefined, signal);
         if (!res.ok) return fail(res.detail ?? "steer failed");
 
         // 4. Poll the transcript delta and stream the reply until the turn settles.

@@ -1,68 +1,62 @@
-import { useEffect, useRef } from "react";
-import type { TranscriptEntry, TranscriptKind } from "./lib/fleetTranscript";
+import { Message01Icon } from "@hugeicons/core-free-icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FleetEmpty } from "./EmptyState";
+import type { TranscriptEntry } from "./lib/fleetTranscript";
+import { Minimap } from "./timeline/Minimap";
+import { deriveMinimapDots, deriveTimelineRows } from "./timeline/deriveRows";
+import { TimelineRowView } from "./timeline/TimelineRowView";
 
-// The unit's live ACP conversation (I03) — the same session every prompt continues, rendered turn
-// by turn. Reads the accumulated transcript from the store; auto-scrolls to the newest turn unless
-// the user has scrolled up to read history.
+// The unit's live ACP conversation (I03) — the same session every prompt continues, rendered as
+// t3-face's reasoning-first turn-fold timeline (t3-face C09): finished turns collapse behind
+// labelled folds (the latest stays expanded), tool calls group into work rows, assistant text is
+// real markdown, reasoning collapses, a working row pulses + ticks a live timer, and a right-edge
+// minimap of user-message dots scrubs the conversation. Row derivation lives in
+// timeline/deriveRows.ts (ported from t3code's MessagesTimeline.logic.ts — see that file's header
+// for provenance); this component owns only expansion state, auto-scroll, and scroll-to-message.
+//
+// PUBLIC INTERFACE IS LOAD-BEARING: IntervenePane.tsx renders `<ConversationView entries={...} />`
+// and must keep working — `loading` is an ADDITIVE optional prop (t3-face C11), so callers that
+// don't pass it behave exactly as before.
 
-const KIND_LABEL: Record<TranscriptKind, string> = {
-  user: "you",
-  assistant: "agent",
-  thinking: "thinking",
-  tool: "tool",
-  system: "system",
-};
-
-function Turn({ e }: { e: TranscriptEntry }) {
-  const body = e.displayText ?? e.text;
-  if (e.kind === "tool") {
-    return (
-      <div className="rounded-md border border-border/60 bg-muted/50 px-2.5 py-1.5">
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="font-mono font-medium text-info-foreground">
-            {e.tool?.name ?? "tool"}
-          </span>
-          {e.status && (
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
-              {e.status}
-            </span>
-          )}
-        </div>
-        {e.tool?.resultText && (
-          <div className="mt-0.5 line-clamp-3 font-mono text-[10.5px] text-muted-foreground">
-            {e.tool.resultText}
-          </div>
-        )}
-      </div>
-    );
-  }
-  const tone =
-    e.kind === "user"
-      ? "border-success/30 bg-success/10"
-      : e.kind === "thinking" || e.kind === "system"
-        ? "border-transparent bg-transparent"
-        : "border-border/60 bg-card";
-  const textTone =
-    e.kind === "thinking" || e.kind === "system"
-      ? "text-muted-foreground/70 italic"
-      : "text-foreground";
+/** Ghost turn-rows while the first transcript poll is in flight — the unison skeleton sweep, so a
+ *  cold-opened unit paints the conversation's shape instead of a blank pane (t3-face C11). */
+function TranscriptSkeleton() {
   return (
-    <div className={`rounded-md border px-2.5 py-1.5 ${tone}`}>
-      <div className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-        {KIND_LABEL[e.kind]}
+    <div className="flex flex-col gap-3 py-2" aria-hidden>
+      <div className="flex justify-end">
+        <Skeleton className="h-10 w-2/3 rounded-2xl" />
       </div>
-      <div
-        className={`whitespace-pre-wrap break-words text-[12px] leading-relaxed ${textTone}`}
-      >
-        {body}
+      <div className="flex flex-col gap-1.5">
+        <Skeleton className="h-4 w-11/12 rounded" />
+        <Skeleton className="h-4 w-4/5 rounded" />
+        <Skeleton className="h-4 w-3/5 rounded" />
       </div>
     </div>
   );
 }
 
-export function ConversationView({ entries }: { entries: TranscriptEntry[] }) {
+export function ConversationView({
+  entries,
+  loading = false,
+}: {
+  entries: TranscriptEntry[];
+  loading?: boolean;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+
+  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedWorkGroups, setExpandedWorkGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const rows = useMemo(
+    () => deriveTimelineRows(entries, { expandedTurns, expandedWorkGroups }),
+    [entries, expandedTurns, expandedWorkGroups],
+  );
+  const minimapDots = useMemo(() => deriveMinimapDots(entries), [entries]);
 
   // Auto-scroll to the newest turn, but only if the user was already at the bottom (don't yank them
   // away from history they scrolled up to read). The effect reads only refs; `entries` is the change
@@ -72,27 +66,68 @@ export function ConversationView({ entries }: { entries: TranscriptEntry[] }) {
     if (atBottomRef.current) endRef.current?.scrollIntoView({ block: "end" });
   }, [entries]);
 
+  const toggleTurn = (id: string) => {
+    setExpandedTurns((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleWorkGroup = (groupId: string) => {
+    setExpandedWorkGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
+  const scrollToRow = (id: string) => {
+    rowRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   if (entries.length === 0) {
+    if (loading) return <TranscriptSkeleton />;
     return (
-      <div className="py-6 text-center text-[11px] text-muted-foreground/70">
-        No conversation yet — send an instruction below.
-      </div>
+      <FleetEmpty
+        compact
+        icon={Message01Icon}
+        title="No messages yet"
+        description="Send an instruction below to start this unit's first turn."
+      />
     );
   }
 
   return (
     <div
-      className="flex flex-col gap-1.5"
+      className="flex gap-1.5"
       onScroll={(ev) => {
         const el = ev.currentTarget;
         atBottomRef.current =
           el.scrollHeight - el.scrollTop - el.clientHeight < 40;
       }}
     >
-      {entries.map((e) => (
-        <Turn key={e.id ?? e.seq ?? e.clientTurnId ?? `${e.kind}-${e.ts}`} e={e} />
-      ))}
-      <div ref={endRef} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            ref={(el) => {
+              if (el) rowRefs.current.set(row.id, el);
+              else rowRefs.current.delete(row.id);
+            }}
+          >
+            <TimelineRowView
+              row={row}
+              onToggleTurn={toggleTurn}
+              onToggleWorkGroup={toggleWorkGroup}
+            />
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+      <Minimap dots={minimapDots} onSelect={scrollToRow} />
     </div>
   );
 }

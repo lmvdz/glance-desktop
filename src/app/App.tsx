@@ -5,11 +5,15 @@ import {
 } from "@/components/ui/resizable";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { consumeLaunchFiles, getLaunchDir } from "@/lib/launchDir";
+import {
+  consumeLaunchFiles,
+  getLaunchDir,
+  hasExplicitLaunchTarget,
+} from "@/lib/launchDir";
 import { quoteShellArg } from "@/lib/shellQuote";
 import { usePresence } from "@/lib/usePresence";
 import { useZoom } from "@/lib/useZoom";
-import { isMarkdownPath } from "@/lib/utils";
+import { cn, isMarkdownPath } from "@/lib/utils";
 import {
   AgentNotificationsBridge,
   nextAttentionTarget,
@@ -34,15 +38,12 @@ import {
   useEditorFileSync,
 } from "@/modules/editor";
 import { FileExplorer, type FileExplorerHandle } from "@/modules/explorer";
-import {
-  GrrModal,
-  resolveGrrRepo,
-  setWorktreeOpener,
-  unitKey,
-  useFleetRoster,
-  useFleetSelection,
-} from "@/modules/fleet";
+import { GrrModal, resolveGrrRepo, setWorktreeOpener } from "@/modules/fleet";
+import { type FleetUnit, unitKey } from "@/modules/fleet/lib/fleetRoster";
 import { resolveOpenAction } from "@/modules/fleet/lib/worktreeOpener";
+import { useFleetRoster } from "@/modules/fleet/store/fleetRosterStore";
+import { useFleetSelection } from "@/modules/fleet/store/fleetSelectionStore";
+import { repoLabel } from "@/modules/fleet/spine/lib/spineFormat";
 import type { GitHistorySearchHandle } from "@/modules/git-history";
 import {
   Header,
@@ -103,6 +104,9 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { SearchAddon } from "@xterm/addon-search";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { HubShell } from "./hub/HubShell";
+import { planShellBoot } from "./hub/shellBoot";
+import { useShellMode } from "./hub/shellModeStore";
 import { CloseDialogs } from "./components/CloseDialogs";
 import {
   TOGGLE_BLOCK_INPUT_EVENT,
@@ -134,7 +138,6 @@ export default function App() {
     openFileTab,
     pinTab,
     newPreviewTab,
-    newFleetTab,
     newMarkdownTab,
     setMarkdownView,
     setOverrideLanguage,
@@ -270,6 +273,49 @@ export default function App() {
     adoptWorkspaceEnv,
   ]);
 
+  // Shell-mode boot (hub-shell H0). The full precedence lives in `planShellBoot`
+  // and its tests; at runtime two of its three cases resolve WITHOUT persisting:
+  //  - a launch target (glance <path> / "Open With") shows the workspace for this
+  //    session via the render-time resolution below, but must NOT bake "workspace"
+  //    into the persisted home — opening a file once can't change where a plain
+  //    launch lands;
+  //  - a returning user's mode is already rehydrated synchronously, so there's
+  //    nothing to decide.
+  // Only a genuine first launch (no persisted choice, no target) needs a decision
+  // here: the "open fleet on launch" toggle picks the default, which we persist as
+  // the new home. Runs once, on the same spaces-hydrated signal that activates
+  // restored tabs, so there's no setTimeout race.
+  const shellDecidedRef = useRef(false);
+  useEffect(() => {
+    if (shellDecidedRef.current) return;
+    if (!spacesHydrated || !activeSpaceId) return;
+    shellDecidedRef.current = true;
+    if (hasExplicitLaunchTarget()) return;
+    if (useShellMode.getState().mode !== null) return;
+    void (async () => {
+      await usePreferencesStore
+        .getState()
+        .init()
+        .catch(() => {});
+      useShellMode.getState().setMode(
+        planShellBoot({
+          hasExplicitLaunchTarget: false,
+          persistedMode: null,
+          openFleetOnLaunch: usePreferencesStore.getState().openFleetOnLaunch,
+        }),
+      );
+    })();
+  }, [spacesHydrated, activeSpaceId]);
+
+  // Which stacked shell paints. A persisted choice is rehydrated synchronously,
+  // so a returning user's shell shows on the first frame. On a genuine first
+  // launch (mode still null, before the boot effect runs) we resolve the same
+  // way the planner will — a launch target implies the workspace, otherwise the
+  // hub — so `glance <file>` never flashes the hub before the IDE.
+  const shellMode = useShellMode((s) => s.mode);
+  const hubVisible =
+    shellMode === null ? !hasExplicitLaunchTarget() : shellMode === "hub";
+
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   const spaceTabs = useMemo(
@@ -303,6 +349,40 @@ export default function App() {
     },
     [],
   );
+  // Fleet units for the command palette's jump-to-unit rows (t3-face concern 07). The roster is
+  // polled — and this root subscribes to it — ONLY while the palette is open (ref-counted via
+  // start()/stop() with any mounted fleet pane), so App never re-renders on the 2s poll cadence when
+  // the palette is closed. The rows carry the daemon's server tier for their status cluster.
+  const [fleetUnits, setFleetUnits] = useState<FleetUnit[]>([]);
+  useEffect(() => {
+    if (!commandPaletteOpen) return;
+    const { start, stop } = useFleetRoster.getState();
+    start();
+    setFleetUnits(useFleetRoster.getState().units);
+    const unsubscribe = useFleetRoster.subscribe((s) => setFleetUnits(s.units));
+    return () => {
+      unsubscribe();
+      stop();
+    };
+  }, [commandPaletteOpen]);
+  const fleetPaletteUnits = useMemo(
+    () =>
+      fleetUnits.map((u) => ({
+        key: unitKey(u),
+        name: u.name,
+        repoLabel: repoLabel(u),
+        priority: u.ladderPriority,
+        startedAt: u.startedAt,
+      })),
+    [fleetUnits],
+  );
+  // Jump to a unit from the command palette (t3-face concern 07): switch to the
+  // hub shell (the fleet's home now) and select the unit in its spine.
+  const openFleetUnit = useCallback((key: string) => {
+    useShellMode.getState().showHub();
+    useFleetSelection.getState().select(key);
+  }, []);
+
   const miniOpen = useChatStore((s) => s.mini.open);
   const miniPresence = usePresence(miniOpen, 200);
   const openMini = useChatStore((s) => s.openMini);
@@ -332,9 +412,10 @@ export default function App() {
 
   useWindowTitle(activeTab, explorerRoot);
 
-  // The repo a friction gripe (C3) is filed against — the selected fleet unit's repo when a fleet
-  // tab is focused, else the active workspace cwd. Resolved lazily off store snapshots when the
-  // modal opens so App never re-renders on the 2s roster poll just to keep this current.
+  // The repo a friction gripe (C3) is filed against — the selected fleet unit's repo when the hub
+  // (fleet) shell is visible, else the active workspace cwd. Resolved lazily off store snapshots
+  // when the modal opens so App never re-renders on the 2s roster poll just to keep this current.
+  // (The pre-hub-shell "fleet" TAB kind is gone — hub visibility is the fleet-surface signal now.)
   const grrRepo = useMemo(() => {
     if (!grrOpen) return null;
     const selectedId = useFleetSelection.getState().selectedId;
@@ -343,11 +424,11 @@ export default function App() {
       ? units.find((u) => unitKey(u) === selectedId)
       : undefined;
     return resolveGrrRepo({
-      fleetTabActive: activeTab?.kind === "fleet",
+      fleetTabActive: hubVisible,
       selectedUnitRepo: selectedUnit?.repo ?? null,
       workspaceCwd: explorerRoot,
     });
-  }, [grrOpen, activeTab, explorerRoot]);
+  }, [grrOpen, hubVisible, explorerRoot]);
 
   useEffect(() => {
     setActiveSearchAddon(
@@ -666,8 +747,6 @@ export default function App() {
     [newPreviewTab],
   );
 
-  const openFleetTab = useCallback(() => newFleetTab(), [newFleetTab]);
-
   const splitActivePaneInActiveTab = useCallback(
     (dir: "row" | "col") => {
       const t = tabsRef.current.find((x) => x.id === activeId);
@@ -711,9 +790,12 @@ export default function App() {
   const [zenMode, setZenMode] = useState(false);
 
   // Focus an agent's tab, switching to its space first so the header and tab
-  // strip don't end up showing a different space than the focused pane.
+  // strip don't end up showing a different space than the focused pane. The tab
+  // lives in the workspace shell, so flip out of the hub first (H5 owns the full
+  // policy; this keeps the round-trip working now).
   const activateAgentTarget = useCallback(
     (tabId: number, leafId: number) => {
+      useShellMode.getState().showWorkspace();
       const space = tabsRef.current.find((t) => t.id === tabId)?.spaceId;
       if (space && space !== useSpaces.getState().activeId) {
         useSpaces.getState().setActive(space);
@@ -1022,6 +1104,10 @@ export default function App() {
   // a roster row can invoke it without prop-drilling through the pane stack.
   const handleOpenWorktree = useCallback(
     ({ name, worktree }: { name: string; worktree: string }) => {
+      // The hub↔IDE door (H0): opening a unit's worktree is the gesture that
+      // takes you INTO the IDE, so flip to the workspace shell alongside the
+      // Space create-or-focus below.
+      useShellMode.getState().showWorkspace();
       const { spaces, create, setActive } = useSpaces.getState();
       const action = resolveOpenAction(spaces, worktree);
       if (action.kind === "focus") {
@@ -1123,7 +1209,6 @@ export default function App() {
             openNewPrivate: openNewPrivateTab,
             openNewEditor: () => setNewEditorOpen(true),
             openNewPreview: () => openPreviewTab(""),
-            openNewFleet: () => openFleetTab(),
             openFrictionCapture: () => setGrrOpen(true),
             openGitGraph: openGitGraphFromContext,
             toggleSourceControl,
@@ -1142,6 +1227,8 @@ export default function App() {
             openSpacesOverview: () => setSwitcherOpen(true),
             newSpace: () => void handleNewSpace(),
             switchSpace: (id) => useSpaces.getState().setActive(id),
+            fleetUnits: fleetPaletteUnits,
+            openFleetUnit,
           })
         : [],
     [
@@ -1155,7 +1242,6 @@ export default function App() {
       openNewBlockTab,
       openNewPrivateTab,
       openPreviewTab,
-      openFleetTab,
       openGitGraphFromContext,
       toggleSourceControl,
       handleCloseTabOrPane,
@@ -1165,6 +1251,8 @@ export default function App() {
       askFromSelection,
       activeSpaceId,
       handleNewSpace,
+      fleetPaletteUnits,
+      openFleetUnit,
     ],
   );
 
@@ -1208,223 +1296,262 @@ export default function App() {
     terminalRefs,
   });
 
+  // The terax IDE / workspace shell — Header + editor/terminal surface +
+  // StatusBar. Demoted from the default frame to an on-demand mode (hub-shell
+  // H0): always mounted (so terminal PTYs and editor buffers survive a mode
+  // flip) but only visible when `hubVisible` is false.
+  const workspaceShell = (
+    <div className="relative flex h-full flex-col overflow-hidden bg-background text-foreground">
+      {!zenMode && (
+        <Header
+          tabs={spaceTabs}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onNew={openNewTab}
+          onNewBlock={openNewBlockTab}
+          onNewPrivate={openNewPrivateTab}
+          onNewPreview={() => openPreviewTab("")}
+          onNewEditor={() => setNewEditorOpen(true)}
+          onNewGitGraph={openGitGraphFromContext}
+          onClose={handleClose}
+          onPin={pinTab}
+          onRename={handleRenameTab}
+          onReorder={reorderTabByGap}
+          onToggleSidebar={toggleSidebar}
+          onShowHub={() => useShellMode.getState().showHub()}
+          onOpenCommandPalette={() => openCommandPalette("commands")}
+          onActivateAgent={onActivateAgent}
+          onActivateLocalAgent={onActivateLocalAgent}
+          onOpenSettings={() => void openSettingsWindow()}
+          spaceSwitcher={spaceSwitcher}
+          searchTarget={searchTarget}
+          searchRef={searchInlineRef}
+          onOverrideLanguage={setOverrideLanguage}
+        />
+      )}
+
+      <main className="zoom-content flex min-h-0 flex-1 flex-col">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-h-0 flex-1"
+        >
+          <ResizablePanel
+            id="sidebar"
+            panelRef={sidebarRef}
+            defaultSize={
+              initialSidebarCollapsed ? "0px" : `${sidebarWidthRef.current}px`
+            }
+            minSize={`${SIDEBAR_MIN_WIDTH}px`}
+            maxSize={`${SIDEBAR_MAX_WIDTH}px`}
+            collapsible
+            collapsedSize={0}
+            onResize={(size) => {
+              if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
+              persistSidebarCollapsed(size.inPixels <= 0);
+            }}
+          >
+            <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
+              <div key={sidebarView} className="min-h-0 flex-1 glance-panel-in">
+                {sidebarView === "explorer" ? (
+                  <FileExplorer
+                    ref={explorerRef}
+                    rootPath={explorerRoot}
+                    gitStatus={
+                      explorerGitDecorations ? sourceControl.status : null
+                    }
+                    activeFilePath={explorerActiveFilePath}
+                    onOpenFile={handleOpenFile}
+                    onPathRenamed={handlePathRenamed}
+                    onPathDeleted={handlePathDeleted}
+                    onRevealInTerminal={cdInNewTab}
+                    onAttachToAgent={handleAttachFileToAgent}
+                  />
+                ) : (
+                  <SourceControlPanel
+                    open
+                    sourceControl={sourceControl}
+                    onOpenDiff={openGitDiffTab}
+                    onOpenGitGraph={openGitGraphFromContext}
+                    onOpenFile={handleOpenFile}
+                    onNavigateToPath={cdInNewTab}
+                  />
+                )}
+              </div>
+              <SidebarRail
+                activeView={sidebarView}
+                onSelectView={persistSidebarView}
+                changedCount={sourceControl.changedCount}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="relative min-h-0 flex-1">
+                <WorkspaceSurface
+                  tabs={tabs}
+                  activeId={activeId}
+                  activeTab={activeTab}
+                  registerTerminalHandle={registerTerminalHandle}
+                  onSearchReady={handleSearchReady}
+                  onCwd={handleTerminalCwd}
+                  onExit={handleLeafExit}
+                  onFocusLeaf={handleFocusLeaf}
+                  registerEditorHandle={registerEditorHandle}
+                  onEditorDirtyChange={handleEditorDirty}
+                  onEditorCloseTab={disposeTab}
+                  registerPreviewHandle={registerPreviewHandle}
+                  onPreviewUrlChange={handlePreviewUrl}
+                  onAiDiffAccept={(id) => respondToApproval(id, true)}
+                  onAiDiffReject={(id) => respondToApproval(id, false)}
+                  onOpenCommitFile={openCommitFileDiffTab}
+                  onGitHistorySearchHandle={setGitHistoryHandle}
+                  onSetMarkdownView={setMarkdownView}
+                />
+              </div>
+
+              <WorkspaceInputBar
+                isBlockTab={isBlockTab}
+                isTerminalTab={isTerminalTab}
+                activeLeafId={activeLeafId}
+                cwd={activeCwd}
+                home={home}
+                hasComposer={hasComposer}
+                panelOpen={panelOpen}
+                keysLoaded={keysLoaded}
+                onConnect={() => void openSettingsWindow("models")}
+              />
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </main>
+
+      {!zenMode && (
+        <StatusBar
+          cwd={activeCwd}
+          filePath={activeFilePath}
+          home={home}
+          onCd={sendCd}
+          onWorkspaceChange={handleWorkspaceChange}
+          onOpenMini={openMini}
+          hasComposer={hasComposer}
+          privateActive={
+            activeTab?.kind === "terminal" && activeTab.private === true
+          }
+        />
+      )}
+    </div>
+  );
+
+  // Overlays that must work in BOTH shells (command palette, toasts, dialogs,
+  // agent bridges) — hoisted above the mode toggle so they aren't hidden with
+  // the workspace shell when the hub is showing.
+  const globalOverlays = (
+    <>
+      <AgentNotificationsBridge
+        tabs={tabs}
+        activeId={activeId}
+        onActivate={onActivateAgent}
+      />
+      <Toaster position="bottom-right" />
+
+      <GrrModal open={grrOpen} onOpenChange={setGrrOpen} repo={grrRepo} />
+
+      {hasComposer ? (
+        <>
+          <AgentRunBridge
+            openAiDiffTab={openAiDiffTab}
+            closeAiDiffTab={closeAiDiffTab}
+          />
+          <LocalAgentNotificationsBridge />
+        </>
+      ) : null}
+
+      {hasComposer && miniPresence.mounted ? (
+        <AiMiniWindow state={miniPresence.state} />
+      ) : null}
+      {askPresence.mounted ? (
+        <SelectionAskAi
+          state={askPresence.state}
+          x={askPopup?.x ?? 0}
+          y={askPopup?.y ?? 0}
+          onAsk={onAskFromSelection}
+          onDismiss={() => setAskPopup(null)}
+        />
+      ) : null}
+
+      {switcherState && (
+        <TabSwitcherHud tabs={spaceTabs} state={switcherState} />
+      )}
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+        initialMode={paletteInitialMode}
+        commandItems={commandPaletteItems}
+        workspaceRoot={explorerRoot}
+        onOpenContentHit={openContentHit}
+        insertCommand={insertHistoryCommand}
+      />
+
+      <NewEditorDialog
+        open={newEditorOpen}
+        onOpenChange={setNewEditorOpen}
+        rootPath={explorerRoot ?? home}
+        onCreated={(path) => openFileTab(path)}
+      />
+
+      <UpdaterDialog />
+
+      <CloseDialogs
+        tabs={tabs}
+        pendingCloseTab={pendingCloseTab}
+        onCancelClose={cancelClose}
+        onConfirmClose={confirmClose}
+        pendingTerminalCloseTab={pendingTerminalCloseTab}
+        onCancelTerminalClose={cancelTerminalClose}
+        onConfirmTerminalClose={confirmTerminalClose}
+        pendingDeleteTabs={pendingDeleteTabs}
+        onCancelDeleteClose={cancelDeleteClose}
+        onConfirmDeleteClose={confirmDeleteClose}
+        pendingAppClose={pendingAppClose}
+        onCancelAppClose={cancelAppClose}
+        onConfirmAppClose={confirmAppClose}
+      />
+    </>
+  );
+
+  // Two stacked shells, one visible at a time (hub-shell H0). Nothing unmounts
+  // on a mode flip — the workspace shell keeps its terminal PTYs, editor
+  // buffers, and useTabs state alive behind `invisible pointer-events-none`,
+  // exactly like WorkspaceSurface toggles tab surfaces one level down.
   const shell = (
     <ThemeProvider>
       <TooltipProvider>
-        <div className="relative flex h-screen flex-col overflow-hidden bg-background text-foreground">
-          {!zenMode && (
-            <Header
-              tabs={spaceTabs}
-              activeId={activeId}
-              onSelect={setActiveId}
-              onNew={openNewTab}
-              onNewBlock={openNewBlockTab}
-              onNewPrivate={openNewPrivateTab}
-              onNewPreview={() => openPreviewTab("")}
-              onNewEditor={() => setNewEditorOpen(true)}
-              onNewGitGraph={openGitGraphFromContext}
-              onClose={handleClose}
-              onPin={pinTab}
-              onRename={handleRenameTab}
-              onReorder={reorderTabByGap}
-              onToggleSidebar={toggleSidebar}
-              onOpenCommandPalette={() => openCommandPalette("commands")}
-              onActivateAgent={onActivateAgent}
-              onActivateLocalAgent={onActivateLocalAgent}
-              onOpenSettings={() => void openSettingsWindow()}
-              spaceSwitcher={spaceSwitcher}
-              searchTarget={searchTarget}
-              searchRef={searchInlineRef}
-              onOverrideLanguage={setOverrideLanguage}
-            />
-          )}
-
-          <main className="zoom-content flex min-h-0 flex-1 flex-col">
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="min-h-0 flex-1"
-            >
-              <ResizablePanel
-                id="sidebar"
-                panelRef={sidebarRef}
-                defaultSize={
-                  initialSidebarCollapsed
-                    ? "0px"
-                    : `${sidebarWidthRef.current}px`
-                }
-                minSize={`${SIDEBAR_MIN_WIDTH}px`}
-                maxSize={`${SIDEBAR_MAX_WIDTH}px`}
-                collapsible
-                collapsedSize={0}
-                onResize={(size) => {
-                  if (size.inPixels > 0) persistSidebarWidth(size.inPixels);
-                  persistSidebarCollapsed(size.inPixels <= 0);
-                }}
-              >
-                <div className="flex h-full min-h-0 flex-col border-r border-border/60 bg-card">
-                  <div
-                    key={sidebarView}
-                    className="min-h-0 flex-1 glance-panel-in"
-                  >
-                    {sidebarView === "explorer" ? (
-                      <FileExplorer
-                        ref={explorerRef}
-                        rootPath={explorerRoot}
-                        gitStatus={
-                          explorerGitDecorations ? sourceControl.status : null
-                        }
-                        activeFilePath={explorerActiveFilePath}
-                        onOpenFile={handleOpenFile}
-                        onPathRenamed={handlePathRenamed}
-                        onPathDeleted={handlePathDeleted}
-                        onRevealInTerminal={cdInNewTab}
-                        onAttachToAgent={handleAttachFileToAgent}
-                      />
-                    ) : (
-                      <SourceControlPanel
-                        open
-                        sourceControl={sourceControl}
-                        onOpenDiff={openGitDiffTab}
-                        onOpenGitGraph={openGitGraphFromContext}
-                        onOpenFile={handleOpenFile}
-                        onNavigateToPath={cdInNewTab}
-                      />
-                    )}
-                  </div>
-                  <SidebarRail
-                    activeView={sidebarView}
-                    onSelectView={persistSidebarView}
-                    changedCount={sourceControl.changedCount}
-                  />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel id="workspace" defaultSize="78%" minSize="30%">
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="relative min-h-0 flex-1">
-                    <WorkspaceSurface
-                      tabs={tabs}
-                      activeId={activeId}
-                      activeTab={activeTab}
-                      registerTerminalHandle={registerTerminalHandle}
-                      onSearchReady={handleSearchReady}
-                      onCwd={handleTerminalCwd}
-                      onExit={handleLeafExit}
-                      onFocusLeaf={handleFocusLeaf}
-                      registerEditorHandle={registerEditorHandle}
-                      onEditorDirtyChange={handleEditorDirty}
-                      onEditorCloseTab={disposeTab}
-                      registerPreviewHandle={registerPreviewHandle}
-                      onPreviewUrlChange={handlePreviewUrl}
-                      onAiDiffAccept={(id) => respondToApproval(id, true)}
-                      onAiDiffReject={(id) => respondToApproval(id, false)}
-                      onOpenCommitFile={openCommitFileDiffTab}
-                      onGitHistorySearchHandle={setGitHistoryHandle}
-                      onSetMarkdownView={setMarkdownView}
-                    />
-                  </div>
-
-                  <WorkspaceInputBar
-                    isBlockTab={isBlockTab}
-                    isTerminalTab={isTerminalTab}
-                    activeLeafId={activeLeafId}
-                    cwd={activeCwd}
-                    home={home}
-                    hasComposer={hasComposer}
-                    panelOpen={panelOpen}
-                    keysLoaded={keysLoaded}
-                    onConnect={() => void openSettingsWindow("models")}
-                  />
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </main>
-
-          {!zenMode && (
-            <StatusBar
-              cwd={activeCwd}
-              filePath={activeFilePath}
-              home={home}
-              onCd={sendCd}
-              onWorkspaceChange={handleWorkspaceChange}
-              onOpenMini={openMini}
-              hasComposer={hasComposer}
-              privateActive={
-                activeTab?.kind === "terminal" && activeTab.private === true
-              }
-            />
-          )}
-
-          <AgentNotificationsBridge
-            tabs={tabs}
-            activeId={activeId}
-            onActivate={onActivateAgent}
-          />
-          <Toaster position="bottom-right" />
-
-          {hasComposer ? (
-            <>
-              <AgentRunBridge
-                openAiDiffTab={openAiDiffTab}
-                closeAiDiffTab={closeAiDiffTab}
-              />
-              <LocalAgentNotificationsBridge />
-            </>
-          ) : null}
-
-          {hasComposer && miniPresence.mounted ? (
-            <AiMiniWindow state={miniPresence.state} />
-          ) : null}
-          {askPresence.mounted ? (
-            <SelectionAskAi
-              state={askPresence.state}
-              x={askPopup?.x ?? 0}
-              y={askPopup?.y ?? 0}
-              onAsk={onAskFromSelection}
-              onDismiss={() => setAskPopup(null)}
-            />
-          ) : null}
-
-          {switcherState && (
-            <TabSwitcherHud tabs={spaceTabs} state={switcherState} />
-          )}
-
-          <CommandPalette
-            open={commandPaletteOpen}
-            onOpenChange={setCommandPaletteOpen}
-            initialMode={paletteInitialMode}
-            commandItems={commandPaletteItems}
-            workspaceRoot={explorerRoot}
-            onOpenContentHit={openContentHit}
-            insertCommand={insertHistoryCommand}
-          />
-
-          <GrrModal open={grrOpen} onOpenChange={setGrrOpen} repo={grrRepo} />
-
-          <NewEditorDialog
-            open={newEditorOpen}
-            onOpenChange={setNewEditorOpen}
-            rootPath={explorerRoot ?? home}
-            onCreated={(path) => openFileTab(path)}
-          />
-
-          <UpdaterDialog />
-
-          <CloseDialogs
-            tabs={tabs}
-            pendingCloseTab={pendingCloseTab}
-            onCancelClose={cancelClose}
-            onConfirmClose={confirmClose}
-            pendingTerminalCloseTab={pendingTerminalCloseTab}
-            onCancelTerminalClose={cancelTerminalClose}
-            onConfirmTerminalClose={confirmTerminalClose}
-            pendingDeleteTabs={pendingDeleteTabs}
-            onCancelDeleteClose={cancelDeleteClose}
-            onConfirmDeleteClose={confirmDeleteClose}
-            pendingAppClose={pendingAppClose}
-            onCancelAppClose={cancelAppClose}
-            onConfirmAppClose={confirmAppClose}
-          />
+        <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
+          <div
+            className={cn(
+              // z-order + opaque bg on the VISIBLE shell so it fully covers the hidden one.
+              // `invisible` alone does not stop a hidden xterm WebGL canvas from compositing
+              // through in the webview (WKWebView/WebView2), so terax's terminal + input bar
+              // bled over the hub. The visible shell on top, opaque, is what actually hides it.
+              "absolute inset-0",
+              hubVisible ? "z-10 bg-background" : "z-0 invisible pointer-events-none",
+            )}
+            aria-hidden={!hubVisible}
+          >
+            <HubShell visible={hubVisible} />
+          </div>
+          <div
+            className={cn(
+              "absolute inset-0",
+              hubVisible ? "z-0 invisible pointer-events-none" : "z-10 bg-background",
+            )}
+            aria-hidden={hubVisible}
+          >
+            {workspaceShell}
+          </div>
+          {globalOverlays}
         </div>
       </TooltipProvider>
     </ThemeProvider>

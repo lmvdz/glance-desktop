@@ -77,6 +77,23 @@ export default defineConfig(async ({ mode }): Promise<UserConfig> => ({
           if (id.includes("vite/preload-helper") || id.includes("/vite/dist/"))
             return "react";
 
+          // ai-elements/message.tsx (Streamdown + the CodeMirror-lezer code renderer) now has TWO
+          // independent lazy-import entry points: the ai module's existing AiMiniWindow chunk, and
+          // the fleet timeline's assistant-markdown row (t3-face C09). Left unpinned, Rollup's
+          // auto-splitter groups each reachability path's shared local modules into its OWN
+          // same-named-but-different-hash "react" chunk (observed: a second react-*.js appearing,
+          // duplicating provider/keyring code neither lazy boundary actually needs on its own).
+          // Pinning the whole markdown-rendering slice to one explicit name forces both call sites
+          // onto the SAME physical chunk, same as every other heavy-stack pin above/below.
+          if (
+            id.includes("/src/components/ai-elements/message.tsx") ||
+            id.includes("/src/components/ai-elements/chat-code.tsx") ||
+            id.includes("/src/components/ai-elements/chat-code-lezer.ts") ||
+            id.includes("/src/components/ai-elements/markdown-code.tsx") ||
+            id.includes("/src/components/ai-elements/shimmer.tsx")
+          )
+            return "ai-elements-markdown";
+
           if (!id.includes("node_modules")) return null;
 
           // Ubiquitous styling utils used by `cn()` on nearly every eager
@@ -136,6 +153,12 @@ export default defineConfig(async ({ mode }): Promise<UserConfig> => ({
         },
       },
     },
+  },
+  // Vitest scans **/*.test.* by default; a nested git worktree (.worktrees/<name>, e.g. a parked
+  // PR branch checked out under the repo) would otherwise get its test files swept into every run
+  // and fail on cross-worktree global/localStorage state pollution. Never scan nested worktrees.
+  test: {
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**", "**/src-tauri/**"],
   },
   clearScreen: false,
   server: {

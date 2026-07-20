@@ -1,14 +1,19 @@
-// Attention-notification logic for the bell (fleet-ide-cockpit C08). Pure + separate from the
-// poller so "which units just started needing a human" is unit-testable. The daemon's web-push
-// lane fires the same alert server-side; this is the cockpit's native, in-app equivalent.
+// Attention-notification logic for the OS-notification bell (fleet-ide-cockpit C08). Pure + separate
+// from the poller so "which units just started needing a human" is unit-testable. The daemon's
+// web-push lane fires the same alert server-side; this is the cockpit's native, in-app equivalent.
+//
+// t3-face concern 07: "needs a human" is no longer decided from raw status here — it is the daemon's
+// server-computed tier (via `needsHuman`, concern 06), read from fleetLadder. The alert title and
+// body come from fleetLadder too, so this module makes no ordering decision of its own.
 
+import { ladderAlertTitle, ladderReason, needsHuman } from "./fleetLadder";
 import type { FleetUnit } from "./fleetRoster";
 import { unitKey } from "./fleetRoster";
-import { whyStopped } from "./fleetIntervene";
 
-/** A unit is "in attention" exactly when it wants a human — input or error (rank ≤ 1). */
-export function isAttention(u: Pick<FleetUnit, "status">): boolean {
-  return u.status === "input" || u.status === "error";
+/** A unit is "in attention" exactly when the daemon put it in the needs-you set (error /
+ *  pending-approval / awaiting-input) — see fleetLadder's `needsHuman`. */
+export function isAttention(u: FleetUnit): boolean {
+  return needsHuman(u);
 }
 
 export interface AttentionAlert {
@@ -46,13 +51,11 @@ export function attentionTransitions(
     if (!isAttention(u)) continue;
     const key = unitKey(u);
     if (prevAttention.has(key) || notified.has(key)) continue; // was already blocked → no re-alert
-    const why = whyStopped(u);
     alerts.push({
       unitId: u.id,
       daemonId: u.daemonId,
-      title:
-        u.status === "input" ? `⛔ ${u.name} needs you` : `⚠ ${u.name} errored`,
-      body: why.detail,
+      title: ladderAlertTitle(u),
+      body: ladderReason(u),
     });
     notified.add(key);
   }

@@ -10,6 +10,9 @@ export type PaletteItem = {
   keywords?: string[];
   icon?: PaletteIcon;
   iconUrl?: string;
+  /** A colored status dot rendered in the leading (icon) slot instead of an icon — the fleet unit
+   *  rows' status cluster (t3-face concern 07). `className` is a `bg-*` token utility. */
+  leadingDot?: { className: string; pulse?: boolean; label: string };
   shortcutId?: ShortcutId;
   trailing?: string;
   disabledReason?: string;

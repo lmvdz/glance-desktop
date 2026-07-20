@@ -259,19 +259,25 @@ export class FleetClient {
     ).catch(() => {});
   }
 
-  /** Create a lightweight "console" chat unit — POST /api/console {repo, model?, profileId?} → { agentId }.
+  /** Create a lightweight "console" chat unit — POST /api/console {repo?, model?, profileId?} → { agentId }.
    *  The daemon-backed chat (E01) lazily creates one on the first turn; the agentId is remembered so
-   *  every turn steers the SAME unit (and so E02 can promote it in place). Returns null on failure. */
+   *  every turn steers the SAME unit (and so E02 can promote it in place). `repo` is optional: the
+   *  spine's "New thread" verb (C13-F4) omits it, and the daemon defaults to its own working repo —
+   *  a chat with the fleet's home project. Returns null on failure. */
   async createConsole(
-    repo: string,
+    repo?: string,
     model?: string,
     profileId?: string,
     signal?: AbortSignal,
   ): Promise<string | null> {
+    const payload: Record<string, string> = {};
+    if (repo) payload.repo = repo;
+    if (model) payload.model = model;
+    if (profileId) payload.profileId = profileId;
     const res = await fleetFetch(`${this.config.baseUrl}/api/console`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ repo, model, profileId }),
+      body: JSON.stringify(payload),
       signal,
     });
     if (!res.ok) return null;
@@ -347,12 +353,17 @@ export class FleetClient {
   async steer(
     id: string,
     message: string,
+    clientTurnId?: string,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
+    // clientTurnId round-trips through the daemon (it echoes it on the persisted user turn), so the
+    // optimistic bubble reconciles away instead of doubling every message (fleetTranscript
+    // reconcileOptimistic). Omitted when absent so non-optimistic callers (resume, daemonTransport)
+    // are unaffected.
     const res = await fleetFetch(`${this.config.baseUrl}/api/command`, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ type: "prompt", id, message }),
+      body: JSON.stringify({ type: "prompt", id, message, ...(clientTurnId ? { clientTurnId } : {}) }),
       signal,
     });
     if (res.ok) return { ok: true };
@@ -360,6 +371,30 @@ export class FleetClient {
       ok: false,
       detail: `${res.status}: ${await res.text().catch(() => "steer failed")}`,
     };
+  }
+
+  /**
+   * Mark a unit seen by the requesting viewer — POST /api/attention/ladder/seen {agentId} (t3-face
+   * concern 06/07). This is the ONE write that advances a viewer's per-unit `lastVisitedAt`, so a
+   * `completed-unseen` rung resolves to `idle` on the viewer's next poll and a completion read here
+   * doesn't stay "unseen" for a second client. `viewerId`/`at` are ALWAYS server-stamped from the
+   * session — never sent from here. Fire-and-forget: a failed mark-seen just means the rung clears
+   * on the next genuine visit, never a fatal path. `ok` reflects the daemon's 2xx.
+   */
+  async markUnitSeen(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean }> {
+    const res = await fleetFetch(
+      `${this.config.baseUrl}/api/attention/ladder/seen`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ agentId: id }),
+        signal,
+      },
+    );
+    return { ok: res.ok };
   }
 
   /**

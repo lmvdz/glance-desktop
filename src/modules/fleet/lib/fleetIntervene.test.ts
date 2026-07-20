@@ -1,24 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { FleetStatus, FleetUnit } from "./fleetRoster";
-import { diffLineKind, normalizeDiff, whyStopped } from "./fleetIntervene";
+import { normalizeDiff, whyStopped } from "./fleetIntervene";
 
 function unit(over: Partial<FleetUnit> & { status: FleetStatus }): FleetUnit {
   return { id: "1", name: "u", repo: "/r", daemonId: "d1", ...over };
 }
-
-describe("diffLineKind — unified-diff colorization", () => {
-  it("classifies adds, dels, hunks, meta, and context", () => {
-    expect(diffLineKind("+added line")).toBe("add");
-    expect(diffLineKind("-removed line")).toBe("del");
-    expect(diffLineKind("@@ -1,3 +1,4 @@")).toBe("hunk");
-    expect(diffLineKind("+++ b/file.ts")).toBe("meta"); // file header, not an add
-    expect(diffLineKind("--- a/file.ts")).toBe("meta"); // file header, not a del
-    expect(diffLineKind("diff --git a/x b/x")).toBe("meta");
-    expect(diffLineKind("index abc..def 100644")).toBe("meta");
-    expect(diffLineKind(" unchanged")).toBe("context");
-    expect(diffLineKind("")).toBe("context");
-  });
-});
 
 describe("whyStopped — the human-facing reason", () => {
   it("flags input/error as needing a human, with the pending title / error text", () => {

@@ -1,6 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  DiffFile,
+  type DiffViewMode,
+  DiffViewToggle,
+  lineDiff,
+} from "@/modules/fleet/diffs";
+import {
   ArrowDown01Icon,
   Cancel01Icon,
   FileEditIcon,
@@ -9,7 +15,7 @@ import {
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { usePlanStore, type QueuedEdit } from "../store/planStore";
 
 function basename(p: string): string {
@@ -38,6 +44,8 @@ export function PlanDiffReview() {
   const clear = usePlanStore((s) => s.clear);
   const applyAll = usePlanStore((s) => s.applyAll);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<DiffViewMode>("unified");
+  const [wrap, setWrap] = useState(false);
 
   if (queue.length === 0) return null;
 
@@ -66,6 +74,13 @@ export function PlanDiffReview() {
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <DiffViewToggle
+            view={view}
+            onView={setView}
+            wrap={wrap}
+            onWrap={setWrap}
+            className="mr-1"
+          />
           <Button
             type="button"
             size="sm"
@@ -91,7 +106,13 @@ export function PlanDiffReview() {
       </div>
       <ul className="flex flex-1 flex-col gap-1.5 overflow-auto p-3">
         {queue.map((q) => (
-          <PlanRow key={q.id} item={q} onReject={() => removeOne(q.id)} />
+          <PlanRow
+            key={q.id}
+            item={q}
+            view={view}
+            wrap={wrap}
+            onReject={() => removeOne(q.id)}
+          />
         ))}
       </ul>
     </div>
@@ -100,9 +121,13 @@ export function PlanDiffReview() {
 
 function PlanRow({
   item,
+  view,
+  wrap,
   onReject,
 }: {
   item: QueuedEdit;
+  view: DiffViewMode;
+  wrap: boolean;
   onReject: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -145,9 +170,7 @@ function PlanRow({
               {basename(item.path)}
             </span>
             {isNew ? (
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                new
-              </span>
+              <span className="text-[10px] text-success-foreground">new</span>
             ) : null}
           </div>
           <div className="truncate font-mono text-[10px] text-muted-foreground">
@@ -155,9 +178,7 @@ function PlanRow({
           </div>
           {stats ? (
             <div className="mt-0.5 flex items-center gap-2 text-[10px] tabular-nums">
-              <span className="text-emerald-600 dark:text-emerald-400">
-                +{stats.added}
-              </span>
+              <span className="text-success-foreground">+{stats.added}</span>
               <span className="text-destructive">−{stats.removed}</span>
               <span className="text-muted-foreground">
                 {item.kind === "multi_edit" ? "multi-edit" : item.kind}
@@ -182,9 +203,11 @@ function PlanRow({
       </div>
       {open && !isDir ? (
         <div className="border-t border-border/40 bg-muted/20 px-2.5 py-2">
-          <UnifiedDiffPreview
+          <PlanRowDiff
             original={item.originalContent}
             proposed={item.proposedContent}
+            view={view}
+            wrap={wrap}
           />
         </div>
       ) : null}
@@ -192,65 +215,27 @@ function PlanRow({
   );
 }
 
-function UnifiedDiffPreview({
+function PlanRowDiff({
   original,
   proposed,
+  view,
+  wrap,
 }: {
   original: string;
   proposed: string;
+  view: DiffViewMode;
+  wrap: boolean;
 }) {
-  // Coarse line-level diff (LCS-lite via set membership). For real diffs
-  // we'd reach for a library; this is good enough for at-a-glance review.
-  const a = original.split("\n");
-  const b = proposed.split("\n");
-  const setA = new Set(a);
-  const setB = new Set(b);
-
-  const lines: Array<{ kind: "add" | "del" | "ctx"; text: string }> = [];
-  // First pass: removed (in a, not in b).
-  for (const l of a) if (!setB.has(l)) lines.push({ kind: "del", text: l });
-  // Then: added (in b, not in a).
-  for (const l of b) if (!setA.has(l)) lines.push({ kind: "add", text: l });
-
-  if (lines.length === 0) {
-    return (
-      <div className="text-[11px] italic text-muted-foreground">
-        no line-level changes
-      </div>
-    );
-  }
-
-  const MAX = 80;
-  const shown = lines.slice(0, MAX);
-  const rest = lines.length - shown.length;
-
+  // Real LCS line diff (interleaved context/add/del), rendered through the
+  // shared t3 diff surface — the same renderer the fleet IntervenePane uses.
+  const parsed = useMemo(
+    () => lineDiff(original, proposed),
+    [original, proposed],
+  );
   return (
-    <div className="overflow-hidden rounded border border-border/40 font-mono text-[11px] leading-relaxed">
-      <div className="max-h-72 overflow-auto">
-        {shown.map((l, i) => (
-          <div
-            key={i}
-            className={cn(
-              "flex whitespace-pre",
-              l.kind === "add"
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                : "bg-destructive/10 text-destructive",
-            )}
-          >
-            <span className="w-4 shrink-0 select-none px-1 text-center opacity-70">
-              {l.kind === "add" ? "+" : "-"}
-            </span>
-            <span className="min-w-0 flex-1 overflow-x-auto pr-2">
-              {l.text || " "}
-            </span>
-          </div>
-        ))}
-        {rest > 0 ? (
-          <div className="px-2 py-1 text-[10px] italic text-muted-foreground">
-            … {rest} more changes
-          </div>
-        ) : null}
-      </div>
+    <div className="max-h-72 overflow-auto">
+      <DiffFile file="" parsed={parsed} view={view} wrap={wrap} />
     </div>
   );
 }
+

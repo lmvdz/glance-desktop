@@ -1,7 +1,8 @@
 // The fleet→ground gesture (fleet-ide-cockpit C06): opening a unit's git worktree as a Space.
 // The create-or-focus logic needs the App's useTabs instance (newTab / setActiveSpaceForNewTabs),
-// which isn't a global store — so App registers a handler here on mount and RosterView calls it,
-// mirroring the lsp module's setLspNavigator singleton. Absent handler = a no-op (nothing mounted).
+// which isn't a global store — so App registers a handler here on mount and the spine's row
+// components call it (t3-face C05: formerly RosterView), mirroring the lsp module's
+// setLspNavigator singleton. Absent handler = a no-op (nothing mounted).
 
 import type { DaemonConnection } from "./fleetConfig";
 

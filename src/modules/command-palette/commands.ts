@@ -1,4 +1,8 @@
 import type { SearchTarget } from "@/modules/header";
+import {
+  type LadderPriority,
+  ladderMeta,
+} from "@/modules/fleet/lib/fleetLadder";
 import { MAX_PANES_PER_TAB, type Tab } from "@/modules/tabs";
 import { leafIds } from "@/modules/terminal";
 import {
@@ -15,7 +19,6 @@ import {
   LayoutTwoRowIcon,
   PaintBoardIcon,
   Search01Icon,
-  ServerStack01Icon,
   Settings01Icon,
   SidebarLeftIcon,
   SourceCodeIcon,
@@ -26,6 +29,7 @@ import type { PaletteItem } from "./types";
 
 export const COMMAND_GROUPS = [
   "General",
+  "Fleet",
   "Spaces",
   "Tabs",
   "Panes",
@@ -34,6 +38,17 @@ export const COMMAND_GROUPS = [
   "View",
   "AI",
 ] as const;
+
+/** A fleet unit projected for a command-palette row (t3-face concern 07). The daemon's server tier
+ *  drives the leading status cluster; `startedAt` becomes the trailing relative timestamp. */
+export type FleetPaletteUnit = {
+  /** The roster `unitKey` (`daemonId:id`) — what `openFleetUnit` selects. */
+  key: string;
+  name: string;
+  repoLabel: string;
+  priority?: LadderPriority;
+  startedAt?: number;
+};
 
 export type CommandPaletteActionContext = {
   tabs: Tab[];
@@ -46,7 +61,6 @@ export type CommandPaletteActionContext = {
   openNewPrivate: () => void;
   openNewEditor: () => void;
   openNewPreview: () => void;
-  openNewFleet: () => void;
   openFrictionCapture: () => void;
   openGitGraph: () => void;
   toggleSourceControl: () => void;
@@ -65,9 +79,26 @@ export type CommandPaletteActionContext = {
   openSpacesOverview: () => void;
   newSpace: () => void;
   switchSpace: (id: string) => void;
+  /** Fleet units for the palette's jump-to-unit rows (t3-face concern 07). */
+  fleetUnits: FleetPaletteUnit[];
+  /** Focus (or open) the fleet pane and select the given unit key. */
+  openFleetUnit: (key: string) => void;
 };
 
 const noop = () => {};
+
+/** Compact relative age ("now" / "5m" / "3h" / "2d") for a unit's trailing timestamp — undefined
+ *  when the unit reports no start time. */
+function fmtAge(startedAt?: number): string | undefined {
+  if (startedAt == null) return undefined;
+  const secs = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  if (secs < 60) return "now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
 
 export function createCommandItems(
   ctx: CommandPaletteActionContext,
@@ -154,6 +185,26 @@ export function createCommandItems(
       disabledReason: sp.id === ctx.activeSpaceId ? "Current space" : undefined,
       run: () => ctx.switchSpace(sp.id),
     })),
+    // Fleet unit rows (t3-face concern 07): the needs-you ladder in the palette — a leading status
+    // cluster (the daemon's server tier, via `ladderMeta`) + a trailing relative timestamp. Selecting
+    // one focuses/opens the fleet pane and selects the unit. t3's `components_CommandPaletteResults`
+    // idiom, on glance's fleet truth.
+    ...ctx.fleetUnits.map((u) => {
+      const meta = ladderMeta(u.priority);
+      return {
+        id: `fleet.unit.${u.key}`,
+        title: u.name,
+        group: "Fleet" as const,
+        keywords: ["fleet", "unit", "agent", u.name, u.repoLabel, meta.label],
+        leadingDot: {
+          className: meta.dot,
+          pulse: meta.pulse,
+          label: meta.label,
+        },
+        trailing: fmtAge(u.startedAt),
+        run: () => ctx.openFleetUnit(u.key),
+      };
+    }),
     {
       id: "tab.new",
       title: "New terminal",
@@ -198,14 +249,6 @@ export function createCommandItems(
       icon: Globe02Icon,
       shortcutId: "tab.newPreview",
       run: ctx.openNewPreview,
-    },
-    {
-      id: "tab.newFleet",
-      title: "New fleet pane",
-      group: "Tabs",
-      keywords: ["fleet", "glance", "daemon", "agents", "squad"],
-      icon: ServerStack01Icon,
-      run: ctx.openNewFleet,
     },
     {
       id: "tab.close",
