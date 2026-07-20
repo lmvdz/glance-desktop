@@ -1508,8 +1508,12 @@ export default function App() {
         <div className="relative h-screen w-screen overflow-hidden bg-background text-foreground">
           <div
             className={cn(
+              // z-order + opaque bg on the VISIBLE shell so it fully covers the hidden one.
+              // `invisible` alone does not stop a hidden xterm WebGL canvas from compositing
+              // through in the webview (WKWebView/WebView2), so terax's terminal + input bar
+              // bled over the hub. The visible shell on top, opaque, is what actually hides it.
               "absolute inset-0",
-              !hubVisible && "invisible pointer-events-none",
+              hubVisible ? "z-10 bg-background" : "z-0 invisible pointer-events-none",
             )}
             aria-hidden={!hubVisible}
           >
@@ -1518,7 +1522,7 @@ export default function App() {
           <div
             className={cn(
               "absolute inset-0",
-              hubVisible && "invisible pointer-events-none",
+              hubVisible ? "z-0 invisible pointer-events-none" : "z-10 bg-background",
             )}
             aria-hidden={hubVisible}
           >

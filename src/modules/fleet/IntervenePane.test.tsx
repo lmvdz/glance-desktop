@@ -145,7 +145,7 @@ describe("IntervenePane steer composer — draft survives unmount (law-5 fix)", 
     await Promise.resolve();
     await Promise.resolve();
     expect(getSteerTextarea().value).toBe("");
-    expect(steerMock).toHaveBeenCalledWith("u1", "ship it");
+    expect(steerMock).toHaveBeenCalledWith("u1", "ship it", expect.any(String));
   });
 });
 
