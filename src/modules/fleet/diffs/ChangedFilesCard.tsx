@@ -120,10 +120,13 @@ export function ChangedFilesCard({
   const count = diff?.length ?? 0;
 
   return (
-    <section className="mt-2 overflow-hidden rounded-lg border border-border/60 bg-card/40">
+    // NO overflow-hidden here: it would become the sticky header's containing scroll ancestor and
+    // silently disable the stick against the conversation's scroller — corners round per-edge
+    // on the header/body instead.
+    <section className="mt-2 rounded-lg border border-border/60 bg-card/40">
       {/* Sticky within the conversation's scroll container, so a long expanded diff keeps its
           summary (and Collapse all) in reach — t3's sticky header, minus its gradient seam. */}
-      <header className="sticky top-0 z-10 flex min-h-8 items-center gap-2 border-b border-border/50 bg-background/95 px-2.5 py-1 backdrop-blur-sm">
+      <header className="sticky top-0 z-10 flex min-h-8 items-center gap-2 rounded-t-lg border-b border-border/50 bg-background/95 px-2.5 py-1 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => setCardCollapsed(unitKey, !collapsed)}
@@ -161,7 +164,7 @@ export function ChangedFilesCard({
       </header>
 
       {!collapsed && (
-        <div className="flex flex-col px-1.5 py-1.5">
+        <div className="flex flex-col rounded-b-lg px-1.5 py-1.5">
           {error ? (
             <div className="px-1 py-0.5 text-[11px] text-destructive">{error}</div>
           ) : diff === null ? (

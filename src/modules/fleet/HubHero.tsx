@@ -11,11 +11,17 @@
 
 import { useRef, useState } from "react";
 import { ComposerShell } from "@/components/composer/ComposerShell";
+import { unitKey } from "./lib/fleetRoster";
 import { startConsoleThread } from "./lib/startThread";
 import { useFleetConnection } from "./store/fleetConnectionStore";
 import { useFleetRoster } from "./store/fleetRosterStore";
 import { useFleetSelection } from "./store/fleetSelectionStore";
 import { useSteerDraftStore } from "./store/fleetSteerDraftStore";
+
+/** Roster-membership probe for startConsoleThread's select-after-settle. */
+function rosterHasUnit(key: string): boolean {
+  return useFleetRoster.getState().units.some((u) => unitKey(u) === key);
+}
 
 export function HubHero() {
   const activeId = useFleetConnection((s) => s.activeId);
@@ -32,26 +38,44 @@ export function HubHero() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Synchronous re-entry lock: `busy` state lands a render late, so a double ⌘Enter (or
+  // click+Enter) would otherwise pass the guard twice and create two threads.
+  const sendingRef = useRef(false);
 
   const daemonLabel = connections.find((c) => c.id === activeId)?.label;
 
   const send = async () => {
     const message = text.trim();
-    if (!message || busy || !activeId) return;
+    if (!message || sendingRef.current || !activeId) return;
+    sendingRef.current = true;
     setBusy(true);
     setErr(null);
-    const res = await startConsoleThread({
-      client,
-      activeId,
-      refresh,
-      select,
-      firstMessage: message,
-    });
-    setBusy(false);
-    if (res.ok) {
-      clearDraft(draftKey);
-    } else {
-      setErr(res.reason);
+    try {
+      const res = await startConsoleThread({
+        client,
+        activeId,
+        refresh,
+        select,
+        hasUnit: rosterHasUnit,
+        firstMessage: message,
+      });
+      if (res.ok) {
+        clearDraft(draftKey);
+      } else if (res.unitId) {
+        // The thread exists but the first send failed: re-home the typed message into the new
+        // unit's OWN steer draft, then open it — the composer comes up with the text ready to
+        // resend instead of silently empty (this component unmounts on select, so an error line
+        // here would never be seen).
+        setDraft(`${activeId}:${res.unitId}`, message);
+        clearDraft(draftKey);
+        await refresh();
+        select(`${activeId}:${res.unitId}`);
+      } else {
+        setErr(res.reason);
+      }
+    } finally {
+      sendingRef.current = false;
+      setBusy(false);
     }
   };
 

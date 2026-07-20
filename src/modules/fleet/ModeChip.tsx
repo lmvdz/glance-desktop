@@ -30,10 +30,18 @@ export function ModeChip({
   onSetMode: (mode: string) => Promise<void>;
 }) {
   // Optimistic display until the roster poll confirms (or the write fails and we snap back).
+  // The HOST must key this component per unit (IntervenePane does) — pending state is
+  // per-conversation and must never survive a unit switch. A timeout backstops daemons whose
+  // roster echo lags or normalizes the value differently, so the chip can't dim forever.
   const [pendingMode, setPendingMode] = useState<string | null>(null);
   useEffect(() => {
     if (pendingMode && mode === pendingMode) setPendingMode(null);
   }, [mode, pendingMode]);
+  useEffect(() => {
+    if (!pendingMode) return;
+    const id = window.setTimeout(() => setPendingMode(null), 6000);
+    return () => window.clearTimeout(id);
+  }, [pendingMode]);
 
   const shown = pendingMode ?? mode;
   const current = MODES.find((m) => m.value === shown);
@@ -52,6 +60,7 @@ export function ModeChip({
     <DropdownMenu>
       <DropdownMenuTrigger
         title="Autonomy mode"
+        disabled={pendingMode !== null}
         className={cn(
           "flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border/60 px-1.5",
           "text-[10.5px] font-medium text-foreground/75 transition-colors hover:bg-accent hover:text-foreground",

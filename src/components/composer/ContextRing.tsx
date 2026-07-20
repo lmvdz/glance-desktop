@@ -42,6 +42,7 @@ export function ContextRing({
       role="img"
       aria-label={parts.join(", ")}
     >
+      {/* biome-ignore lint/a11y/noSvgWithoutTitle: decorative — the labeled parent span carries the accessible name; the svg is aria-hidden */}
       <svg
         width={RING_SIZE}
         height={RING_SIZE}

@@ -226,3 +226,37 @@ describe("resultSuggestsFailure — command-family failure heuristic (r3 borrow 
     expect(read.looksFailed).toBeUndefined();
   });
 });
+
+describe("resultSuggestsFailure — reviewer false-positive regressions (grok/codex r3 gauntlet)", () => {
+  it("a passing test that asserts on 'command not found' text stays clean", () => {
+    const resultText =
+      "✓ handles missing binary\n  expect(msg).toMatch(/command not found/)\n\n Test Files  1 passed (1)\n";
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText }))).toBe(false);
+  });
+  it("grep/rg output that merely contains ENOENT stays clean", () => {
+    expect(
+      resultSuggestsFailure(tool({ name: "bash", resultText: "src/errors.ts:12: throw new Error('ENOENT')" })),
+    ).toBe(false);
+  });
+  it("a printf of the phrase mid-output with clean lines after stays clean", () => {
+    expect(
+      resultSuggestsFailure(
+        tool({ name: "bash", resultText: "command not found\nrecovered\nall good" }),
+      ),
+    ).toBe(false);
+  });
+  it("real shell diagnostics on the last lines still flag", () => {
+    expect(
+      resultSuggestsFailure(tool({ name: "bash", resultText: "sh: tscc: command not found" })),
+    ).toBe(true);
+    expect(
+      resultSuggestsFailure(tool({ name: "bash", resultText: "cat: missing.txt: No such file or directory" })),
+    ).toBe(true);
+    expect(resultSuggestsFailure(tool({ name: "bash", resultText: "spawn tsc ENOENT" }))).toBe(true);
+  });
+  it("streaming partials never flag (no settled result yet)", () => {
+    expect(
+      resultSuggestsFailure(tool({ name: "bash", partialText: "sh: x: command not found" })),
+    ).toBe(false);
+  });
+});

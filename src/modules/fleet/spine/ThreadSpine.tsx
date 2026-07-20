@@ -11,6 +11,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useMemo, useState } from "react";
 import { FleetEmpty } from "../EmptyState";
 import { ladderReason, needsHuman } from "../lib/fleetLadder";
+import { unitKey } from "../lib/fleetRoster";
 import { startConsoleThread } from "../lib/startThread";
 import {
   canOpenUnitWorktree,
@@ -56,7 +57,14 @@ export function ThreadSpine() {
     if (creatingThread || !activeId) return;
     setCreatingThread(true);
     setThreadErr(null);
-    const res = await startConsoleThread({ client, activeId, refresh, select });
+    const res = await startConsoleThread({
+      client,
+      activeId,
+      refresh,
+      select,
+      hasUnit: (key) =>
+        useFleetRoster.getState().units.some((u) => unitKey(u) === key),
+    });
     if (!res.ok) setThreadErr(res.reason);
     setCreatingThread(false);
   };

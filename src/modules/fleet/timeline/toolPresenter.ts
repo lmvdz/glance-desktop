@@ -161,30 +161,43 @@ export function unwrapShellCommand(command: string): string {
   return current;
 }
 
-/** How much of the result TAIL the failure heuristic reads — failures announce themselves at the
- *  end of output; scanning the whole result would false-positive on e.g. a test log quoted early. */
-const FAILURE_SCAN_TAIL_CHARS = 240;
+/** The failure heuristic reads only the LAST few non-empty lines — failures announce themselves
+ *  at the end of output, and a whole-result scan false-positives on quoted content (a passing
+ *  test asserting on "command not found", a grep for ENOENT). */
+const FAILURE_SCAN_TAIL_LINES = 2;
 
+// Deliberately narrow: each pattern is a recognizable SHELL/RUNTIME DIAGNOSTIC LINE FORM, not a
+// bare phrase — `sh: tscc: command not found`, `cat: x: No such file or directory`,
+// `spawn tsc ENOENT`, `Process exited with code 2` — so command output that merely CONTAINS the
+// words (rg hits, test logs, printf) stays clean. A false negative costs nothing (the badge is a
+// bonus over the harness status); a false positive lies about a successful command.
 const FAILURE_TAIL_PATTERNS: RegExp[] = [
-  /command not found/i,
-  /no such file or directory/i,
-  /\bENOENT\b/,
+  /(?:^|[/\w.-]+:\s*)(?:[\w./-]+:\s*)?command not found/i,
+  /\bnot found: [\w./-]+$/i,
+  /[\w./'"-]+:\s*No such file or directory/i,
+  /\bspawn(?:Sync)? \S+ ENOENT\b/,
   /is not recognized as (?:an internal or external command|the name of a cmdlet)/i,
   /exit(?:ed)?(?: with)? (?:status|code):? [1-9]\d*/i,
   /non-zero exit/i,
 ];
 
+function tailLines(text: string, count: number): string[] {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.slice(-count);
+}
+
 /**
- * True when a command tool's output tail reads like a failure even though the harness reported
- * ok — harnesses routinely mark a ran-but-failed command as a successful tool call (the tool DID
- * run). Only ever consulted for the command family, and never overrides an explicit error status.
+ * True when a command tool's SETTLED output tail reads like a failure even though the harness
+ * reported ok — harnesses routinely mark a ran-but-failed command as a successful tool call (the
+ * tool DID run). Only ever consulted for the command family; never overrides an explicit error
+ * status; ignores streaming partials (a mid-stream match would flicker the badge).
  */
 export function resultSuggestsFailure(tool: TranscriptTool): boolean {
   if (tool.isError) return false; // already an explicit failure — nothing to suggest
-  const result = tool.resultText ?? tool.partialText;
+  const result = tool.resultText;
   if (!result) return false;
-  const tail = result.slice(-FAILURE_SCAN_TAIL_CHARS);
-  return FAILURE_TAIL_PATTERNS.some((re) => re.test(tail));
+  const tail = tailLines(result, FAILURE_SCAN_TAIL_LINES);
+  return tail.some((line) => FAILURE_TAIL_PATTERNS.some((re) => re.test(line)));
 }
 
 /** Map an MCP tool id ("mcp__plane_list_work_items") to a calm "Plane · list work items". */

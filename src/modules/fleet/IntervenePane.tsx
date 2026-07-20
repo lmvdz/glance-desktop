@@ -358,7 +358,9 @@ export function IntervenePane({
           conversation flow after the last turn (hub-shell H3). A console chat stays chrome-free. */}
       <div className="flex min-h-0 flex-1 flex-col">
         {!thread && (
-          <div className="shrink-0 px-3 pt-3">
+          // Bounded: a multiline daemon error or a long lease list must never starve the
+          // conversation below — past 40% of the pane this prelude scrolls internally.
+          <div className="max-h-[40%] shrink-0 overflow-y-auto px-3 pt-3">
             {/* Why-stopped — the first thing you want when a unit needs you. */}
             <div
               className={`mb-3 rounded-md border px-3 py-2 ${why.needsHuman ? "border-warning/40 bg-warning/10" : "border-border/60 bg-muted/40"}`}
@@ -415,6 +417,7 @@ export function IntervenePane({
           sendTitle="Send (⌘/Ctrl+Enter)"
           footerLeft={
             <ModeChip
+              key={draftKey}
               mode={unit.autonomyMode}
               onSetMode={async (mode) => {
                 const c = await client(unit.daemonId);

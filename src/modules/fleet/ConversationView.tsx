@@ -3,6 +3,7 @@ import {
   memo,
   type ReactNode,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -54,7 +55,7 @@ import { TimelineRowView } from "./timeline/TimelineRowView";
  *  cold-opened unit paints the conversation's shape instead of a blank pane (t3-face C11). */
 function TranscriptSkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-3 py-2" aria-hidden>
+    <div className="flex flex-col gap-3 py-2" aria-hidden>
       <div className="flex justify-end">
         <Skeleton className="h-10 w-2/3 rounded-2xl" />
       </div>
@@ -174,10 +175,6 @@ export function ConversationView({
     });
   }, []);
 
-  const suppressScrollIntent = () => {
-    suppressUntilRef.current = performance.now() + PROGRAMMATIC_SCROLL_SUPPRESS_MS;
-  };
-
   // A user send (optimistic entry appended with a clientTurnId) enters anchoring-new-turn.
   const prevEntriesLenRef = useRef(0);
   useLayoutEffect(() => {
@@ -193,20 +190,20 @@ export function ConversationView({
     }
   }, [entries]);
 
-  // Positioning per mode. Runs on every rows/footer/spacer change: following-end re-sticks to the
-  // bottom; anchoring re-pins the anchor row and sizes the trailing spacer. The spacer state write
-  // re-runs this effect once more with the spacer in the DOM so the scrollTop lands correctly.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rows/entries/spacerPx are re-position triggers; the effect reads only refs + DOM
-  useLayoutEffect(() => {
+  // One positioning routine for both triggers below: following-end re-sticks to the bottom;
+  // anchoring re-pins the anchor row and sizes the trailing spacer.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const applyScrollMode = useCallback(() => {
     const el = containerRef.current;
     if (!el) return;
     if (modeRef.current === "following-end") {
-      suppressScrollIntent();
+      suppressUntilRef.current = performance.now() + PROGRAMMATIC_SCROLL_SUPPRESS_MS;
       el.scrollTop = el.scrollHeight;
       return;
     }
     if (modeRef.current === "anchoring-new-turn") {
-      const anchorId = findAnchorRowId(entries, anchorTurnRef.current);
+      const anchorId = findAnchorRowId(entriesRef.current, anchorTurnRef.current);
       const rowEl = anchorId ? rowRefs.current.get(anchorId) : undefined;
       const endEl = endRef.current;
       if (!rowEl || !endEl) return;
@@ -216,10 +213,30 @@ export function ConversationView({
         contentEnd: endEl.offsetTop,
       });
       setSpacerPx((prev) => (Math.abs(prev - nextSpacer) > 1 ? nextSpacer : prev));
-      suppressScrollIntent();
+      suppressUntilRef.current = performance.now() + PROGRAMMATIC_SCROLL_SUPPRESS_MS;
       el.scrollTop = resolveAnchorScrollTop(rowEl.offsetTop);
     }
-  }, [rows, entries, spacerPx]);
+  }, []);
+
+  // Re-position on every rows/footer/spacer change. The spacer state write re-runs this once more
+  // with the spacer in the DOM so the scrollTop lands correctly.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rows/entries/spacerPx are re-position triggers; the routine reads only refs + DOM
+  useLayoutEffect(() => {
+    applyScrollMode();
+  }, [rows, entries, spacerPx, applyScrollMode]);
+
+  // Content can grow WITHOUT a dep change — the async diff card replacing its skeleton, a file
+  // diff expanding, images/markdown settling. A ResizeObserver on the content column re-applies
+  // the active mode so following-end actually follows those too (t3 keeps its list pinned on
+  // itemLayout changes for the same reason).
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => applyScrollMode());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [applyScrollMode]);
 
   const scrollToRow = useCallback((id: string) => {
     const el = rowRefs.current.get(id);
@@ -230,34 +247,27 @@ export function ConversationView({
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
-  if (entries.length === 0) {
-    if (loading) return <TranscriptSkeleton />;
-    return (
-      <div className="flex flex-col gap-3 px-3 py-3">
-        <FleetEmpty
-          compact
-          icon={Message01Icon}
-          title="No messages yet"
-          description="Send an instruction below to start this unit's first turn."
-        />
-        {footer}
-      </div>
-    );
-  }
+  const clearScrollSuppression = () => {
+    suppressUntilRef.current = 0;
+  };
 
+  const isEmpty = entries.length === 0;
+
+  // ONE scroll root for empty, loading, and populated states — the footer (changed-files card)
+  // can be taller than the pane even with zero transcript entries, and it must stay scrollable
+  // and reachable in every state.
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: a scroll container — the handlers detect scroll INTENT (wheel/touch/key/pointer), they are not activation semantics
     <div
       ref={containerRef}
       className="relative h-full overflow-y-auto overscroll-contain px-3 py-3"
-      // Wheel/touch are unambiguous USER intent — clear the programmatic-scroll suppression so a
-      // gesture landing inside the window still exits anchoring instead of being snapped back by
-      // the next poll's re-pin.
-      onWheel={() => {
-        suppressUntilRef.current = 0;
-      }}
-      onTouchMove={() => {
-        suppressUntilRef.current = 0;
-      }}
+      // Wheel/touch/keys/pointer (scrollbar drags included) are unambiguous USER intent — clear
+      // the programmatic-scroll suppression so a gesture landing inside the window still exits
+      // anchoring/following instead of being snapped back by the next poll's re-pin.
+      onWheel={clearScrollSuppression}
+      onTouchMove={clearScrollSuppression}
+      onKeyDown={clearScrollSuppression}
+      onPointerDown={clearScrollSuppression}
       onScroll={(ev) => {
         if (performance.now() < suppressUntilRef.current) return;
         const el = ev.currentTarget;
@@ -272,21 +282,34 @@ export function ConversationView({
       }}
     >
       <div className="flex gap-1.5">
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          {rows.map((row) => (
-            <RowShell
-              key={row.id}
-              row={row}
-              onToggleTurn={toggleTurn}
-              onToggleWorkGroup={toggleWorkGroup}
-              registerRow={registerRow}
-            />
-          ))}
+        <div ref={contentRef} className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {isEmpty ? (
+            loading ? (
+              <TranscriptSkeleton />
+            ) : (
+              <FleetEmpty
+                compact
+                icon={Message01Icon}
+                title="No messages yet"
+                description="Send an instruction below to start this unit's first turn."
+              />
+            )
+          ) : (
+            rows.map((row) => (
+              <RowShell
+                key={row.id}
+                row={row}
+                onToggleTurn={toggleTurn}
+                onToggleWorkGroup={toggleWorkGroup}
+                registerRow={registerRow}
+              />
+            ))
+          )}
           {footer}
           <div ref={endRef} />
           {spacerPx > 0 && <div aria-hidden style={{ height: spacerPx }} />}
         </div>
-        <Minimap dots={minimapDots} onSelect={scrollToRow} />
+        {!isEmpty && <Minimap dots={minimapDots} onSelect={scrollToRow} />}
       </div>
     </div>
   );
